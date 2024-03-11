@@ -4,13 +4,14 @@ import pandas as pd
 from streamlit_echarts import st_echarts
 import numpy as np
 import os
-from openai import OpenAI
 import time
 import plotly.express as px
 import plotly.subplots as sp
 from plotly.subplots import make_subplots
 import plotly.graph_objects as go
 import pydeck as pdk
+import matplotlib.pyplot as plt
+import matplotlib as mpl
 
 
 # client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
@@ -41,46 +42,136 @@ def get_data():
     # Query for pulkit_telematics_table
     query_tel = "SELECT * FROM pulkit_telematics_table;"
     df_tel = pd.read_sql_query(query_tel, conn)
+
+    # SQL query
+    query_cohort = """
+    SELECT 
+        vehicle_number,
+        reg_no,
+        telematics_number,
+        chassis_number,
+        partner_id,
+        deployed_city,
+        product,
+        date,
+        SUM(total_discharge_soc) AS total_discharge_soc,
+        CASE 
+            WHEN AVG(total_km_travelled) <= 10 THEN 'a. < 10 kms'
+            WHEN AVG(total_km_travelled) > 10 AND AVG(total_km_travelled) <= 30 THEN 'b. 10 - 30 kms'
+            WHEN AVG(total_km_travelled) > 30 AND AVG(total_km_travelled) <= 50 THEN 'c. 30 - 50 kms'
+            WHEN AVG(total_km_travelled) > 50 AND AVG(total_km_travelled) <= 80 THEN 'd. 50 - 80 kms'
+            WHEN AVG(total_km_travelled) > 80 AND AVG(total_km_travelled) <= 110 THEN 'e. 80 - 110 kms'
+            WHEN AVG(total_km_travelled) > 110 AND AVG(total_km_travelled) <= 140 THEN 'f. 110 - 140 kms'
+            ELSE 'g. > 140 kms'
+        END AS distance_bucket,
+        CASE 
+            WHEN AVG(total_discharge_soc)*-1 <= 20 THEN '01. < 20'
+            WHEN AVG(total_discharge_soc)*-1 > 20 AND AVG(total_discharge_soc)*-1 <= 50 THEN '02. 20 to 50'
+            WHEN AVG(total_discharge_soc)*-1 > 50 AND AVG(total_discharge_soc)*-1 <= 80 THEN '03. 50 to 80'
+            WHEN AVG(total_discharge_soc)*-1 > 80 AND AVG(total_discharge_soc)*-1 <= 120 THEN '04. 80 to 120'
+            WHEN AVG(total_discharge_soc)*-1 > 120 AND AVG(total_discharge_soc)*-1 <= 170 THEN '05. 120 to 170'
+            WHEN AVG(total_discharge_soc)*-1 > 170 AND AVG(total_discharge_soc)*-1 <= 240 THEN '06. 170 to 240'
+            ELSE '07. > 240'
+        END AS total_discharge_soc_bucket,
+        CASE 
+            WHEN AVG(fast_charge_soc) <= 20 THEN '01. < 0.20'
+            WHEN AVG(fast_charge_soc) > 20 AND AVG(fast_charge_soc) <= 50 THEN '02. 20 to 50'
+            WHEN AVG(fast_charge_soc) > 50 AND AVG(fast_charge_soc) <= 80 THEN '03. 50 to 80'
+            WHEN AVG(fast_charge_soc) > 80 AND AVG(fast_charge_soc) <= 120 THEN '04. 80 to 120'
+            WHEN AVG(fast_charge_soc) > 120 AND AVG(fast_charge_soc) <= 170 THEN '05. 120 to 170'
+            WHEN AVG(fast_charge_soc) > 170 AND AVG(fast_charge_soc) <= 240 THEN '06. 170 to 240'
+            ELSE '07. > 240'
+        END AS fast_charging_bucket,
+        CASE 
+            WHEN AVG(slow_charge_soc) <= 20 THEN '01. < 0.20'
+            WHEN AVG(slow_charge_soc) > 20 AND AVG(slow_charge_soc) <= 50 THEN '02. 20 to 50'
+            WHEN AVG(slow_charge_soc) > 50 AND AVG(slow_charge_soc) <= 80 THEN '03. 50 to 80'
+            WHEN AVG(slow_charge_soc) > 80 AND AVG(slow_charge_soc) <= 120 THEN '04. 80 to 120'
+            WHEN AVG(slow_charge_soc) > 120 AND AVG(slow_charge_soc) <= 170 THEN '05. 120 to 170'
+            WHEN AVG(slow_charge_soc) > 170 AND AVG(slow_charge_soc) <= 240 THEN '06. 170 to 240'
+            ELSE '07. > 240'
+        END AS slow_charging_bucket,
+        CASE 
+            WHEN AVG(predicted_range) <= 40 THEN 'a. <= 40 kms'
+            WHEN AVG(predicted_range) > 40 AND AVG(predicted_range) <= 50 THEN 'b. 40 - 50 kms'
+            WHEN AVG(predicted_range) > 50 AND AVG(predicted_range) <= 60 THEN 'c. 50 - 60 kms'
+            WHEN AVG(predicted_range) > 60 AND AVG(predicted_range) <= 70 THEN 'd. 60 - 70 kms'
+            WHEN AVG(predicted_range) > 70 AND AVG(predicted_range) <= 80 THEN 'e. 70 - 80 kms'
+            WHEN AVG(predicted_range) > 80 AND AVG(predicted_range) <= 90 THEN 'f. 80 - 90 kms'
+            WHEN AVG(predicted_range) > 90 AND AVG(predicted_range) <= 100 THEN 'g. 90 - 100 kms'
+            ELSE 'h. > 100 kms'
+        END AS predicted_range_bucket,
+        ROUND(AVG(total_km_travelled)::numeric, 2) AS avg_distance,
+        ROUND(AVG(total_discharge_soc)::numeric, 2) AS avg_c_d_cycles,
+        ROUND(AVG(fast_charge_soc)::numeric, 2) AS avg_fast_charging,
+        ROUND(AVG(slow_charge_soc)::numeric, 2) AS avg_slow_charging,
+        ROUND(AVG(predicted_range)::numeric, 2) AS avg_average_range
+    FROM pulkit_main_telematics
+    GROUP BY vehicle_number, reg_no, telematics_number, chassis_number, date, partner_id, deployed_city, product
+    """
+    df_cohort = pd.read_sql_query(query_cohort, conn)
     
     conn.close()
     
-    return df_main.copy(), df_tel.copy()
+    return df_main.copy(), df_tel.copy(),df_cohort.copy()
 
 
     
 def main():
-    if 'last_refresh' not in st.session_state:
-        st.session_state['last_refresh'] = time.time()
-    # Check if the refresh interval has passed
-    refresh_interval = 3000  # seconds (e.g., 300 seconds = 5 minutes)
-    current_time = time.time()
-    if current_time - st.session_state['last_refresh'] > refresh_interval:
-        st.session_state['last_refresh'] = current_time
-        st.caching.clear_cache()
-        st.experimental_rerun()
+    # if 'last_refresh' not in st.session_state:
+    #     st.session_state['last_refresh'] = time.time()
+    # # Check if the refresh interval has passed
+    # refresh_interval = 3600  # seconds (e.g., 300 seconds = 5 minutes)
+    # current_time = time.time()
+    # if current_time - st.session_state['last_refresh'] > refresh_interval:
+    #     st.session_state['last_refresh'] = current_time
+    #     st.cache_data.clear()
+    #     st.experimental_rerun()
         
-    df_main, df_tel = get_data()
+    df_main, df_tel,df_cohort = get_data()
     df = df_main  # Use df for data from pulkit_main_telematics table
     df2 = df_tel  # Use df2 for data from pulkit_telematics_table
- 
+    df3 = df_cohort  # Use df3 for cohorting data
+    
     # Sidebar filters
     with st.sidebar:
         st.markdown("### Filters")
         df_main['date'] = pd.to_datetime(df_main['date'], errors='coerce')
-        min_date, max_date = df_main['date'].min(), df_main['date'].max()
-        date_range = st.date_input('Select Date Range', [min_date, max_date], min_value=min_date, max_value=max_date)
+        
+        # Calculate the maximum and minimum dates in the dataset
+        max_date = df_main['date'].max()
+        min_date = df_main['date'].min()
+        
+        # Calculate the start date for the last 7 days range
+        start_date_last_7_days = max_date - pd.Timedelta(days=6)
+        
+        # Correcting the previous oversight:
+        # Ensure the date_range variable correctly uses the last 7 days as the default value
+        # and that min_value and max_value parameters are correctly set to define the allowable date range.
+        date_range = st.date_input(
+            'Select Date Range', 
+            value=[start_date_last_7_days, max_date],  # Sets default range to last 7 days
+            min_value=min_date,  # The earliest date a user can select
+            max_value=max_date   # The latest date a user can select
+        )
+        
 
         df_filtered = df_main
         df_filtered_tel = df_tel
+        df_filtered_cohort = df_cohort
         
         if len(date_range) == 2 and date_range[0] and date_range[1]:
                 # ... [your existing data filtering code]
                 df_filtered = df_filtered[(df_filtered['date'] >= pd.Timestamp(date_range[0])) & (df_filtered['date'] <= pd.Timestamp(date_range[1]))]
                 
                 df_filtered_tel['end_date'] = pd.to_datetime(df_filtered_tel['end_date'])
-
+                
+                df_filtered_cohort['date'] = pd.to_datetime(df_filtered_cohort['date'])
+            
                 df_filtered_tel = df_filtered_tel[(df_filtered_tel['end_date'] >= pd.Timestamp(date_range[0])) & (df_filtered_tel['end_date'] <= pd.Timestamp(date_range[1]))]
-    
+
+                df_filtered_cohort = df_filtered_cohort[(df_filtered_cohort['date'] >= pd.Timestamp(date_range[0])) & (df_filtered_cohort['date'] <= pd.Timestamp(date_range[1]))]
+            
                 # Customer Name filter
                 partner_ids = df_filtered['partner_id'].dropna().unique().tolist()
                 selected_partner_ids = st.multiselect('Customer Name', partner_ids)
@@ -89,6 +180,7 @@ def main():
                 if selected_partner_ids:
                     df_filtered = df_filtered[df_filtered['partner_id'].isin(selected_partner_ids)]
                     df_filtered_tel = df_filtered_tel[df_filtered_tel['partner_id'].isin(selected_partner_ids)]
+                    df_filtered_cohort = df_filtered_cohort[df_filtered_cohort['partner_id'].isin(selected_partner_ids)]
     
                 # Product filter
                 products = df_filtered['product'].dropna().unique().tolist()
@@ -98,6 +190,7 @@ def main():
                 if selected_products:
                     df_filtered = df_filtered[df_filtered['product'].isin(selected_products)]
                     df_filtered_tel = df_filtered_tel[df_filtered_tel['product'].isin(selected_products)]
+                    df_filtered_cohort = df_filtered_cohort[df_filtered_cohort['product'].isin(selected_products)]
     
                 # Registration Number filter
                 reg_nos = df_filtered['reg_no'].dropna().unique().tolist()
@@ -107,6 +200,7 @@ def main():
                 if selected_reg_nos:
                     df_filtered = df_filtered[df_filtered['reg_no'].isin(selected_reg_nos)]
                     df_filtered_tel = df_filtered_tel[df_filtered_tel['reg_no'].isin(selected_reg_nos)]
+                    df_filtered_cohort = df_filtered_cohort[df_filtered_cohort['reg_no'].isin(selected_reg_nos)]
     
                 # City filter
                 cities = df_filtered['deployed_city'].dropna().unique().tolist()
@@ -116,52 +210,97 @@ def main():
                 if selected_cities:
                     df_filtered = df_filtered[df_filtered['deployed_city'].isin(selected_cities)]
                     df_filtered_tel = df_filtered_tel[df_filtered_tel['deployed_city'].isin(selected_cities)]
+                    df_filtered_cohort = df_filtered_cohort[df_filtered_cohort['deployed_city'].isin(selected_cities)]
 
-
+        st.markdown("### Cache Management")
+        if st.button("Clear Cache"):
+            st.cache_data.clear()
+            st.experimental_rerun()
 
     
     
-    # Layout: 2 columns
+    # Layout: 3 columns
     col1, col2, col3 = st.columns(3)
 
     # Column 1 - Average Distance Travelled
     with col1:
         st.markdown("## Average Distance")
-        if 'df_filtered' in locals() and not df_filtered.empty:
+
+        # Box plot data preparation
+        if not df_filtered.empty:
+            
+            grouped_distance = df_filtered.groupby('date')['total_km_travelled']
             
             avg_dist_all_vehicles_per_day = df_filtered.groupby('date')['total_km_travelled'].mean().round(1).reset_index()
             overall_avg_dist_per_day = avg_dist_all_vehicles_per_day['total_km_travelled'].mean().round(1)
+            
             st.metric(" ", f"{overall_avg_dist_per_day:.2f} km")
-
-            # Plotting the average distance travelled for all vehicles per day
-            options = {
+            
+            boxplot_data = {
                 "xAxis": {
                     "type": "category",
-                    "data": avg_dist_all_vehicles_per_day['date'].dt.strftime('%d-%m-%Y').tolist(),
+                    "data": [],
                     "axisLabel": {
                         "rotate": 90,  # Rotating x-axis labels by 90 degrees
-                        "fontSize": 10  # Reducing font size
+                        "fontSize": 10
                     }
                 },
-                "yAxis": {
-                    "type": "value"
-                },
+                "yAxis": {"type": "value"},
                 "tooltip": {
-                    "trigger": "axis",
-                    "axisPointer": {
-                        "type": "cross"
-                    }
+                    "trigger": "item",
+                    "axisPointer": {"type": "shadow"}
                 },
-                "series": [{
-                    "data": avg_dist_all_vehicles_per_day['total_km_travelled'].tolist(),
-                    "type": "line"
-                }]
+                "series": [{"name": "Distance Travelled", "type": "boxplot", "data": []}]
             }
-            st_echarts(options=options, height="400px")
-
-
+    
+            for name, group in grouped_distance:
+                percentiles = group.quantile([0.1, 0.25, 0.5, 0.75, 0.9]).round(1).tolist()
+                boxplot_data["xAxis"]["data"].append(name.strftime('%d-%m-%Y'))
+                boxplot_data["series"][0]["data"].append([
+                    percentiles[0], percentiles[1], percentiles[2], percentiles[3], percentiles[4]
+                ])
+    
+            st_echarts(options=boxplot_data, height="400px")
         else:
             st.write("Please select a date range and other filters to view analytics.")
+        
+       
+        
+        # if 'df_filtered' in locals() and not df_filtered.empty:
+            
+        #     avg_dist_all_vehicles_per_day = df_filtered.groupby('date')['total_km_travelled'].mean().round(1).reset_index()
+        #     overall_avg_dist_per_day = avg_dist_all_vehicles_per_day['total_km_travelled'].mean().round(1)
+        #     st.metric(" ", f"{overall_avg_dist_per_day:.2f} km")
+
+        #     # Plotting the average distance travelled for all vehicles per day
+        #     options = {
+        #         "xAxis": {
+        #             "type": "category",
+        #             "data": avg_dist_all_vehicles_per_day['date'].dt.strftime('%d-%m-%Y').tolist(),
+        #             "axisLabel": {
+        #                 "rotate": 90,  # Rotating x-axis labels by 90 degrees
+        #                 "fontSize": 10  # Reducing font size
+        #             }
+        #         },
+        #         "yAxis": {
+        #             "type": "value"
+        #         },
+        #         "tooltip": {
+        #             "trigger": "axis",
+        #             "axisPointer": {
+        #                 "type": "cross"
+        #             }
+        #         },
+        #         "series": [{
+        #             "data": avg_dist_all_vehicles_per_day['total_km_travelled'].tolist(),
+        #             "type": "line"
+        #         }]
+        #     }
+        #     st_echarts(options=options, height="400px")
+
+
+        # else:
+        #     st.write("Please select a date range and other filters to view analytics.")
         
         st.markdown("## Charge SOC Over Time")
         if 'df_filtered' in locals() and not df_filtered.empty:
@@ -215,7 +354,6 @@ def main():
         # Average Range of the Fleet Metric Calculation
         avg_range_fleet = np.sum(df_range['total_km_travelled']) * -100 / np.sum(df_range['total_discharge_soc'])
         st.metric(" ", f"{avg_range_fleet:.2f} km")
-
     
         # Box plot data preparation
         if not df_range.empty:
@@ -262,7 +400,7 @@ def main():
         else:
             st.write("Please select a date range and other filters to view analytics.")
     with col3:
-        st.markdown("## Vehicle level Total Distance travelled and range")
+        st.markdown("## Distance travelled and range")
         # st.markdown("## ")
         # st.markdown("## ")
         # st.markdown("## ")
@@ -362,13 +500,50 @@ def main():
     # else:
     #     st.write("No charging locations found.")
 
+    
 
+
+    if not df_filtered_cohort.empty:                
+        st.markdown("## Distance Travelled distribution ")
+        # Create a pivot table
+        pivot_table = df_filtered_cohort.pivot_table(
+            index='distance_bucket',  # Rows (index) will be the different distance buckets
+            columns='date',           # Columns will be the dates
+            values='vehicle_number',  # Values will be the count of vehicle numbers
+            aggfunc='count',          # We count the number of vehicle numbers for each (row, column) pair
+            fill_value=0              # Fill missing values with 0
+        )
+        pivot_table.columns = pivot_table.columns.strftime('%d-%m-%Y')
         
-    # Display the filtered dataframe below the charts
+        # Convert the cell values to percentage of row totals
+        pivot_table_percentage = pivot_table.div(pivot_table.sum(axis=0), axis='columns') * 100
+        
+        # Format the numbers in the pivot table to show as percentages with 1 decimal place and append "%"
+        formatted_pivot_table_percentage = pivot_table_percentage.style.format("{:.1f}%")
+        
+        # Now, display the formatted pivot table in Streamlit
+        st.table(formatted_pivot_table_percentage)
+
+    else:
+        st.write("Please select a date range and other filters to view analytics.")
+        
+
+    # else:
+    #     st.write("Please select a date range and other filters to view analytics.")
+    
     if not df_filtered.empty:
         st.markdown("## Day Wise Data")
-        st.dataframe(df_range, height=300)
-
+        st.dataframe(df_filtered, height=300)
+        
+    # Display the filtered dataframe below the charts
+    if not df_filtered_tel.empty:
+        st.markdown("## SOC Data")
+        st.dataframe(df_filtered_tel, height=300)
+    
+    # Display the filtered dataframe below the charts
+    # if not df_filtered_tel.empty:
+    #     st.markdown("## Cohorting Data")
+    #     st.dataframe(df_filtered_cohort, height=300)
 
     # df_filtered_tel['energy_consumption'] = df_filtered_tel.apply(
     #     lambda row: round((11.77 * 1000 * (row['change_in_soc'] / -100)) / row['total_distance_km'], 2) 
