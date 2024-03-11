@@ -7,7 +7,6 @@ psycopg2-binary
 plotly
 matplotlib
 streamlit-echarts
-openai
 transformers
 torch
 streamlit-plotly-mapboxEvents
