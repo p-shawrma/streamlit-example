@@ -8,10 +8,8 @@ plotly
 matplotlib
 streamlit-echarts
 transformers
-torch
 streamlit-plotly-mapboxEvents
 plotly-express
-geopy
 scikit-learn
 requests
 datetime 
