@@ -36,11 +36,11 @@ def get_data():
     )
     
     # Query for pulkit_main_telematics table
-    query_main = "SELECT * FROM pulkit_main_telematics;"
+    query_main = "SELECT * FROM pulkit_main_telematics WHERE partner_id LIKE '%BLUWHEELZ%';"
     df_main = pd.read_sql_query(query_main, conn)
     
     # Query for pulkit_telematics_table
-    query_tel = "SELECT * FROM pulkit_telematics_table;"
+    query_tel = "SELECT * FROM pulkit_telematics_table WHERE partner_id LIKE '%BLUWHEELZ%';"
     df_tel = pd.read_sql_query(query_tel, conn)
 
     # SQL query
@@ -107,6 +107,7 @@ def get_data():
         ROUND(AVG(slow_charge_soc)::numeric, 2) AS avg_slow_charging,
         ROUND(AVG(predicted_range)::numeric, 2) AS avg_average_range
     FROM pulkit_main_telematics
+    WHERE partner_id LIKE '%BLUWHEELZ%'
     GROUP BY vehicle_number, reg_no, telematics_number, chassis_number, date, partner_id, deployed_city, product
     """
     df_cohort = pd.read_sql_query(query_cohort, conn)
