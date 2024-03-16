@@ -541,25 +541,78 @@ def main():
         st.markdown("## SOC Data")
         st.dataframe(df_filtered_tel, height=300)
     
-    # Display the filtered dataframe below the charts
-    # if not df_filtered_tel.empty:
-    #     st.markdown("## Cohorting Data")
-    #     st.dataframe(df_filtered_cohort, height=300)
+    Display the filtered dataframe below the charts
+    if not df_filtered_tel.empty:
+        st.markdown("## Cohorting Data")
+        st.dataframe(df_filtered_cohort, height=300)
 
-    # df_filtered_tel['energy_consumption'] = df_filtered_tel.apply(
-    #     lambda row: round((11.77 * 1000 * (row['change_in_soc'] / -100)) / row['total_distance_km'], 2) 
-    #     if (row['product'] == "12_KW_4W" and row['soc_type'] == "Discharging" and row['total_distance_km'] != 0)
-    #     else row['energy_consumption'],
-    #     axis=1
-    # )
+    df_filtered_tel['energy_consumption'] = df_filtered_tel.apply(
+        lambda row: round((11.77 * 1000 * (row['change_in_soc'] / -100)) / row['total_distance_km'], 2) 
+        if (row['product'] == "12_KW_4W" and row['soc_type'] == "Discharging" and row['total_distance_km'] != 0)
+        else row['energy_consumption'],
+        axis=1
+    )
     
-    # # Remove the "primary_id" column from df_filtered_tel
-    # df_filtered_tel_without_primary_id = df_filtered_tel.drop(columns=['primary_id'])
+    # Remove the "primary_id" column from df_filtered_tel
+    df_filtered_tel_without_primary_id = df_filtered_tel.drop(columns=['primary_id'])
 
-    # # Display the "Day Wise Summary" DataFrame without the "primary_id" column
-    # st.markdown("## Day Wise Summary")
-    # st.dataframe(df_filtered_tel_without_primary_id, height=300)
-        
+    # Display the "Day Wise Summary" DataFrame without the "primary_id" column
+    st.markdown("## Day Wise Summary")
+    st.dataframe(df_filtered_tel_without_primary_id, height=300)
+    if not df_charging_locations.empty:
+        # Check if the necessary columns exist
+        required_columns = ['charging_location', 'charging_location_coordinates', 'change_in_soc', 'soc_type']
+        missing_columns = [col for col in required_columns if col not in df_charging_locations.columns]
+
+        if missing_columns:
+            st.write(f"Missing columns in df_charging_locations: {', '.join(missing_columns)}")
+            return
+
+        # Create a DataFrame with charging_location, charging_location_coordinates, and count of Charging soc_type
+        df_map_data = df_charging_locations.groupby(['charging_location', 'charging_location_coordinates']).agg({
+            'change_in_soc': 'sum',  # Calculate the sum of total_charge_soc
+            'soc_type': 'size'  # Count the number of soc_type
+        }).reset_index()
+
+        # Extract latitude and longitude from charging_location_coordinates
+        df_map_data[['latitude', 'longitude']] = df_map_data['charging_location_coordinates'].str.split(',', expand=True).astype(float)
+
+        # Define the color scale for the bars based on total_charge_soc
+        color_range = [0, df_map_data['change_in_soc'].max()]  # Adjust as needed
+
+        # Create a custom hover text for data points
+        df_map_data['hover_text'] = df_map_data.apply(
+            lambda row: f"Location: {row['charging_location']}<br>"
+                        f"Total Charge SOC: {row['change_in_soc']}<br>"
+                        f"SOC Type Count: {row['soc_type']}",
+            axis=1
+        )
+
+        # Create a scatter map using Plotly Express with Mapbox
+        fig = px.scatter_mapbox(
+            df_map_data,
+            lat="latitude",
+            lon="longitude",
+            color="change_in_soc",
+            size="soc_type",
+            color_continuous_scale="YlOrRd",  # You can choose a different color scale
+            size_max=15,  # Adjust the max size of data points
+            zoom=10,  # Adjust the initial zoom level
+            hover_name="charging_location",
+            hover_data=["change_in_soc", "soc_type", "hover_text"],
+        )
+
+        # Customize the map layout
+        fig.update_layout(
+            mapbox_style="streets",  # You can choose different Mapbox styles
+            margin={"r": 0, "t": 0, "l": 0, "b": 0},  # Remove margin
+            template="plotly_dark"
+        )
+
+        # Display the map
+        st.plotly_chart(fig, use_container_width=True)
+    else:
+        st.write("No charging locations found.")        
 
 
 if __name__ == "__main__":
