@@ -541,24 +541,8 @@ def main():
         st.markdown("## SOC Data")
         st.dataframe(df_filtered_tel, height=300)
     
-    # Display the filtered dataframe below the charts
-    if not df_filtered_tel.empty:
-        st.markdown("## Cohorting Data")
-        st.dataframe(df_filtered_cohort, height=300)
 
-    df_filtered_tel['energy_consumption'] = df_filtered_tel.apply(
-        lambda row: round((11.77 * 1000 * (row['change_in_soc'] / -100)) / row['total_distance_km'], 2) 
-        if (row['product'] == "12_KW_4W" and row['soc_type'] == "Discharging" and row['total_distance_km'] != 0)
-        else row['energy_consumption'],
-        axis=1
-    )
     
-    # Remove the "primary_id" column from df_filtered_tel
-    df_filtered_tel_without_primary_id = df_filtered_tel.drop(columns=['primary_id'])
-
-    # Display the "Day Wise Summary" DataFrame without the "primary_id" column
-    st.markdown("## Day Wise Summary")
-    st.dataframe(df_filtered_tel_without_primary_id, height=300)
     if not df_charging_locations.empty:
         # Check if the necessary columns exist
         required_columns = ['charging_location', 'charging_location_coordinates', 'change_in_soc', 'soc_type']
