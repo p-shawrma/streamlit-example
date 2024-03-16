@@ -541,7 +541,7 @@ def main():
         st.markdown("## SOC Data")
         st.dataframe(df_filtered_tel, height=300)
     
-    Display the filtered dataframe below the charts
+    # Display the filtered dataframe below the charts
     if not df_filtered_tel.empty:
         st.markdown("## Cohorting Data")
         st.dataframe(df_filtered_cohort, height=300)
