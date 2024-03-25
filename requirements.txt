@@ -7,7 +7,6 @@ psycopg2-binary
 plotly
 matplotlib
 streamlit-echarts
-streamlit-plotly-mapboxEvents
 plotly-express
 scikit-learn
 requests
