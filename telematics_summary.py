@@ -12,6 +12,7 @@ import plotly.graph_objects as go
 import pydeck as pdk
 import matplotlib.pyplot as plt
 import matplotlib as mpl
+from datetime import datetime, timedelta
 
 
 # client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
@@ -35,16 +36,19 @@ def get_data():
         port='5432'
     )
     
-    # Query for pulkit_main_telematics table
-    query_main = "SELECT * FROM pulkit_main_telematics;"
-    df_main = pd.read_sql_query(query_main, conn)
+    # Calculate the date 45 days ago from today
+    days_ago_45 = datetime.now() - timedelta(days=60)
     
-    # Query for pulkit_telematics_table
-    query_tel = "SELECT * FROM pulkit_telematics_table;"
-    df_tel = pd.read_sql_query(query_tel, conn)
+    # Parameterized query for pulkit_main_telematics table with date filter
+    query_main = "SELECT * FROM pulkit_main_telematics WHERE date >= %s;"
+    df_main = pd.read_sql_query(query_main, conn, params=[days_ago_45])
+    
+    # Parameterized query for pulkit_telematics_table with start_date filter
+    query_tel = "SELECT * FROM pulkit_telematics_table WHERE start_date >= %s;"
+    df_tel = pd.read_sql_query(query_tel, conn, params=[days_ago_45])
 
     # SQL query
-    query_cohort = """
+    query_cohort = f"""
     SELECT 
         vehicle_number,
         reg_no,
@@ -107,9 +111,10 @@ def get_data():
         ROUND(AVG(slow_charge_soc)::numeric, 2) AS avg_slow_charging,
         ROUND(AVG(predicted_range)::numeric, 2) AS avg_average_range
     FROM pulkit_main_telematics
+    WHERE date >=  %s
     GROUP BY vehicle_number, reg_no, telematics_number, chassis_number, date, partner_id, deployed_city, product
     """
-    df_cohort = pd.read_sql_query(query_cohort, conn)
+    df_cohort = pd.read_sql_query(query_cohort, conn, params=[days_ago_45])
     
     conn.close()
     
