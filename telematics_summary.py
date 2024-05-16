@@ -437,7 +437,7 @@ def main():
             
         if not df_range.empty:
             # Group by reg_no and chassis_number, and calculate the sum of total_km_travelled and total_discharge_soc
-            df_grouped = df_range.groupby(['reg_no', 'chassis_number']).agg(
+            df_grouped = df_range.groupby(['chassis_number','reg_no']).agg(
                 total_km_travelled_sum=('total_km_travelled', 'sum'),
                 total_discharge_soc_sum=('total_discharge_soc', 'sum')
             ).reset_index()
@@ -445,10 +445,10 @@ def main():
             df_grouped['Range'] = df_grouped['total_km_travelled_sum'] * (-100) / df_grouped['total_discharge_soc_sum']
         
             # Format the DataFrame to match the screenshot layout
-            df_display = df_grouped[['reg_no', 'chassis_number', 'total_km_travelled_sum', 'Range']].rename(
+            df_display = df_grouped[['chassis_number','reg_no' , 'total_km_travelled_sum', 'Range']].rename(
                 columns={
-                    'reg_no': 'Registration Number', 
                     'chassis_number': 'Chassis Number',
+                    'reg_no': 'Registration Number', 
                     'total_km_travelled_sum': 'Total KM Travelled'
                 }
             )
