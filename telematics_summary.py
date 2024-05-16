@@ -37,7 +37,7 @@ def get_data():
     )
     
     # Calculate the date 45 days ago from today
-    days_ago_45 = datetime.now() - timedelta(days=60)
+    days_ago_45 = datetime.now() - timedelta(days=90)
     
     # Parameterized query for pulkit_main_telematics table with date filter
     query_main = "SELECT * FROM pulkit_main_telematics WHERE date >= %s;"
