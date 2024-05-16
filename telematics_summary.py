@@ -207,6 +207,16 @@ def main():
                     df_filtered_tel = df_filtered_tel[df_filtered_tel['reg_no'].isin(selected_reg_nos)]
                     df_filtered_cohort = df_filtered_cohort[df_filtered_cohort['reg_no'].isin(selected_reg_nos)]
     
+                # Chassis Number filter
+                chassis_nos = df_filtered['chassis_number'].dropna().unique().tolist()
+                selected_chassis_nos = st.multiselect('Chassis Number', chassis_nos)
+    
+                # Filter dataframe by registration number if selected
+                if selected_chassis_nos:
+                    df_filtered = df_filtered[df_filtered['chassis_number'].isin(selected_chassis_nos)]
+                    df_filtered_tel = df_filtered_tel[df_filtered_tel['chassis_number'].isin(selected_chassis_nos)]
+                    df_filtered_cohort = df_filtered_cohort[df_filtered_cohort['chassis_number'].isin(selected_chassis_nos)]
+                    
                 # City filter
                 cities = df_filtered['deployed_city'].dropna().unique().tolist()
                 selected_cities = st.multiselect('City', cities)
@@ -354,7 +364,7 @@ def main():
         st.markdown("## Average Range")
     
         # Filter df_filtered for total_km_travelled > 15km
-        df_range = df_filtered[(df_filtered['total_km_travelled'] > 20) & (df_filtered['total_discharge_soc'] < -10)]
+        df_range = df_filtered[(df_filtered['total_km_travelled'] > 0) & (df_filtered['total_discharge_soc'] < 0)]
 
         # Average Range of the Fleet Metric Calculation
         avg_range_fleet = np.sum(df_range['total_km_travelled']) * -100 / np.sum(df_range['total_discharge_soc'])
@@ -410,7 +420,7 @@ def main():
         # st.markdown("## ")
         # st.markdown("## ")
         # Filter df_filtered for total_km_travelled > 15km
-        df_range = df_filtered[(df_filtered['total_km_travelled'] > 20) & (df_filtered['total_discharge_soc'] < -10)]
+        df_range = df_filtered[(df_filtered['total_km_travelled'] > 0) & (df_filtered['total_discharge_soc'] < -0)]
         
         if not df_range.empty:
             # Group by reg_no and calculate the sum of total_km_travelled and the Range
