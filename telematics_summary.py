@@ -422,20 +422,36 @@ def main():
         # Filter df_filtered for total_km_travelled > 15km
         df_range = df_filtered[(df_filtered['total_km_travelled'] > 0) & (df_filtered['total_discharge_soc'] < -0)]
         
+        # if not df_range.empty:
+        #     # Group by reg_no and calculate the sum of total_km_travelled and the Range
+        #     df_grouped = df_range.groupby('reg_no').agg(
+        #         total_km_travelled_sum=('total_km_travelled', 'sum'),
+        #         total_discharge_soc_sum=('total_discharge_soc', 'sum')
+        #     ).reset_index()
+        #     df_grouped['Range'] = df_grouped['total_km_travelled_sum'] * (-100) / df_grouped['total_discharge_soc_sum']
+
+        #     # Format the DataFrame to match the screenshot layout
+        #     df_display = df_grouped[['reg_no', 'total_km_travelled_sum', 'Range']].rename(
+        #         columns={'reg_no': 'Registration Number', 'total_km_travelled_sum': 'Total KM Travelled'}
+        #     )
+            
         if not df_range.empty:
-            # Group by reg_no and calculate the sum of total_km_travelled and the Range
-            df_grouped = df_range.groupby('reg_no').agg(
+            # Group by reg_no and chassis_number, and calculate the sum of total_km_travelled and total_discharge_soc
+            df_grouped = df_range.groupby(['reg_no', 'chassis_number']).agg(
                 total_km_travelled_sum=('total_km_travelled', 'sum'),
                 total_discharge_soc_sum=('total_discharge_soc', 'sum')
             ).reset_index()
-            df_grouped['Range'] = df_grouped['total_km_travelled_sum'] * (-100) / df_grouped['total_discharge_soc_sum']
-
-            # Format the DataFrame to match the screenshot layout
-            df_display = df_grouped[['reg_no', 'total_km_travelled_sum', 'Range']].rename(
-                columns={'reg_no': 'Registration Number', 'total_km_travelled_sum': 'Total KM Travelled'}
-            )
             
-
+            df_grouped['Range'] = df_grouped['total_km_travelled_sum'] * (-100) / df_grouped['total_discharge_soc_sum']
+        
+            # Format the DataFrame to match the screenshot layout
+            df_display = df_grouped[['reg_no', 'chassis_number', 'total_km_travelled_sum', 'Range']].rename(
+                columns={
+                    'reg_no': 'Registration Number', 
+                    'chassis_number': 'Chassis Number',
+                    'total_km_travelled_sum': 'Total KM Travelled'
+                }
+            )
             
             st.dataframe(df_display,height=400)
             
