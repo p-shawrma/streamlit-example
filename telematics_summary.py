@@ -243,10 +243,13 @@ def main():
 
         # Box plot data preparation
         if not df_filtered.empty:
+            # Filter df_filtered for total_km_travelled > 15km
+            df_distance = df_filtered[(df_filtered['total_km_travelled'] > 5) & (df_filtered['total_discharge_soc'] < 0)]
             
-            grouped_distance = df_filtered.groupby('date')['total_km_travelled']
+            grouped_distance = df_distance.groupby('date')['total_km_travelled']            
+    
+            avg_dist_all_vehicles_per_day = df_distance.groupby('date')['total_km_travelled'].median().round(1).reset_index()
             
-            avg_dist_all_vehicles_per_day = df_filtered.groupby('date')['total_km_travelled'].median().round(1).reset_index()
             overall_avg_dist_per_day = avg_dist_all_vehicles_per_day['total_km_travelled'].median().round(1)
             
             st.metric(" ", f"{overall_avg_dist_per_day:.2f} km")
