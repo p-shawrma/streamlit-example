@@ -246,8 +246,8 @@ def main():
             
             grouped_distance = df_filtered.groupby('date')['total_km_travelled']
             
-            avg_dist_all_vehicles_per_day = df_filtered.groupby('date')['total_km_travelled'].mean().round(1).reset_index()
-            overall_avg_dist_per_day = avg_dist_all_vehicles_per_day['total_km_travelled'].mean().round(1)
+            avg_dist_all_vehicles_per_day = df_filtered.groupby('date')['total_km_travelled'].median().round(1).reset_index()
+            overall_avg_dist_per_day = avg_dist_all_vehicles_per_day['total_km_travelled'].median().round(1)
             
             st.metric(" ", f"{overall_avg_dist_per_day:.2f} km")
             
@@ -283,8 +283,8 @@ def main():
         
         # if 'df_filtered' in locals() and not df_filtered.empty:
             
-        #     avg_dist_all_vehicles_per_day = df_filtered.groupby('date')['total_km_travelled'].mean().round(1).reset_index()
-        #     overall_avg_dist_per_day = avg_dist_all_vehicles_per_day['total_km_travelled'].mean().round(1)
+        #     avg_dist_all_vehicles_per_day = df_filtered.groupby('date')['total_km_travelled'].median().round(1).reset_index()
+        #     overall_avg_dist_per_day = avg_dist_all_vehicles_per_day['total_km_travelled'].median().round(1)
         #     st.metric(" ", f"{overall_avg_dist_per_day:.2f} km")
 
         #     # Plotting the average distance travelled for all vehicles per day
@@ -321,8 +321,8 @@ def main():
         if 'df_filtered' in locals() and not df_filtered.empty:
             # Group by date and calculate averages
             charge_soc_data = df_filtered.groupby('date').agg({
-                'fast_charge_soc': 'mean',
-                'slow_charge_soc': 'mean'
+                'fast_charge_soc': 'median',
+                'slow_charge_soc': 'median'
             }).round(1).reset_index()
 
             # Prepare data for the stacked column chart
@@ -403,10 +403,10 @@ def main():
 
         st.markdown("## Charging Metrics")
         if 'df_filtered' in locals() and not df_filtered.empty:
-            avg_slow_charge_sessions = df_filtered['slow_charge_count'].mean()
-            avg_slow_charge_soc = df_filtered['slow_charge_soc'].mean()
-            avg_fast_charge_sessions = df_filtered['fast_charge_count'].mean()
-            avg_fast_charge_soc = df_filtered['fast_charge_soc'].mean()
+            avg_slow_charge_sessions = df_filtered['slow_charge_count'].median()
+            avg_slow_charge_soc = df_filtered['slow_charge_soc'].median()
+            avg_fast_charge_sessions = df_filtered['fast_charge_count'].median()
+            avg_fast_charge_soc = df_filtered['fast_charge_soc'].median()
             
             st.metric("Average Slow Charge Sessions in a day", f"{avg_slow_charge_sessions:.2f}")
             st.metric("Average Slow Charge SOC in a day", f"{avg_slow_charge_soc:.2f}")
@@ -459,8 +459,8 @@ def main():
 
         # Calculate the average slow_charge_soc and average fast_charge_soc grouped by reg_no
         df_charging = df_filtered.groupby('reg_no').agg(
-            average_slow_charge_soc=('slow_charge_soc', 'mean'),
-            average_fast_charge_soc=('fast_charge_soc', 'mean')
+            average_slow_charge_soc=('slow_charge_soc', 'median'),
+            average_fast_charge_soc=('fast_charge_soc', 'median')
         ).reset_index().round(1)  # Round to 1 decimal place
 
         # Rename columns for display
