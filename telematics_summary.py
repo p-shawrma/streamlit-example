@@ -364,7 +364,7 @@ def main():
         st.markdown("## Average Range")
     
         # Filter df_filtered for total_km_travelled > 15km
-        df_range = df_filtered[(df_filtered['total_km_travelled'] > 0) & (df_filtered['total_discharge_soc'] < 0)]
+        df_range = df_filtered[(df_filtered['total_km_travelled'] > 2) & (df_filtered['total_discharge_soc'] < 0)]
 
         # Average Range of the Fleet Metric Calculation
         avg_range_fleet = np.sum(df_range['total_km_travelled']) * -100 / np.sum(df_range['total_discharge_soc'])
@@ -420,7 +420,7 @@ def main():
         # st.markdown("## ")
         # st.markdown("## ")
         # Filter df_filtered for total_km_travelled > 15km
-        df_range = df_filtered[(df_filtered['total_km_travelled'] > 0) & (df_filtered['total_discharge_soc'] < -0)]
+        df_range = df_filtered[(df_filtered['total_km_travelled'] > 2) & (df_filtered['total_discharge_soc'] < -0)]
         
         # if not df_range.empty:
         #     # Group by reg_no and calculate the sum of total_km_travelled and the Range
@@ -473,7 +473,7 @@ def main():
         # Display the DataFrame
         st.dataframe(df_charging, height=300)     
         
-    df_charging_locations = df_filtered_tel[(df_filtered_tel['change_in_soc'] > 0) & (df_filtered_tel['soc_type'] == "Charging")]
+    df_charging_locations = df_filtered_tel[(df_filtered_tel['change_in_soc'] > 2) & (df_filtered_tel['soc_type'] == "Charging")]
 
 
     # if not df_charging_locations.empty:
