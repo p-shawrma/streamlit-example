@@ -206,7 +206,17 @@ def main():
                     df_filtered = df_filtered[df_filtered['reg_no'].isin(selected_reg_nos)]
                     df_filtered_tel = df_filtered_tel[df_filtered_tel['reg_no'].isin(selected_reg_nos)]
                     df_filtered_cohort = df_filtered_cohort[df_filtered_cohort['reg_no'].isin(selected_reg_nos)]
+                
+                # Chassis Number filter
+                chassis_nos = df_filtered['chassis_number'].dropna().unique().tolist()
+                selected_chassis_nos = st.multiselect('Chassis Number', chassis_nos)
     
+                # Filter dataframe by registration number if selected
+                if selected_chassis_nos:
+                    df_filtered = df_filtered[df_filtered['chassis_number'].isin(selected_chassis_nos)]
+                    df_filtered_tel = df_filtered_tel[df_filtered_tel['chassis_number'].isin(selected_chassis_nos)]
+                    df_filtered_cohort = df_filtered_cohort[df_filtered_cohort['chassis_number'].isin(selected_chassis_nos)]
+
                 # City filter
                 cities = df_filtered['deployed_city'].dropna().unique().tolist()
                 selected_cities = st.multiselect('City', cities)
