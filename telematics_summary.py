@@ -37,7 +37,7 @@ def get_data():
     )
     
     # Calculate the date 45 days ago from today
-    days_ago_45 = datetime.now() - timedelta(days=90)
+    days_ago_45 = datetime.now() - timedelta(days=60)
     
     # Parameterized query for pulkit_main_telematics table with date filter
     query_main = "SELECT * FROM pulkit_main_telematics WHERE date >= %s;"
@@ -207,16 +207,6 @@ def main():
                     df_filtered_tel = df_filtered_tel[df_filtered_tel['reg_no'].isin(selected_reg_nos)]
                     df_filtered_cohort = df_filtered_cohort[df_filtered_cohort['reg_no'].isin(selected_reg_nos)]
     
-                # Chassis Number filter
-                chassis_nos = df_filtered['chassis_number'].dropna().unique().tolist()
-                selected_chassis_nos = st.multiselect('Chassis Number', chassis_nos)
-    
-                # Filter dataframe by registration number if selected
-                if selected_chassis_nos:
-                    df_filtered = df_filtered[df_filtered['chassis_number'].isin(selected_chassis_nos)]
-                    df_filtered_tel = df_filtered_tel[df_filtered_tel['chassis_number'].isin(selected_chassis_nos)]
-                    df_filtered_cohort = df_filtered_cohort[df_filtered_cohort['chassis_number'].isin(selected_chassis_nos)]
-                    
                 # City filter
                 cities = df_filtered['deployed_city'].dropna().unique().tolist()
                 selected_cities = st.multiselect('City', cities)
@@ -226,6 +216,21 @@ def main():
                     df_filtered = df_filtered[df_filtered['deployed_city'].isin(selected_cities)]
                     df_filtered_tel = df_filtered_tel[df_filtered_tel['deployed_city'].isin(selected_cities)]
                     df_filtered_cohort = df_filtered_cohort[df_filtered_cohort['deployed_city'].isin(selected_cities)]
+                
+                # Update the duration slider based on filtered data
+                if not df_filtered.empty:
+                    min_km, max_km = df_filtered['total_km_travelled'].agg(['min', 'max'])
+                    min_km, max_km = int(min_km), int(max_km)
+                else:
+                    min_km, max_km = 0, 0  # Defaults when no data is available
+                
+                # Set the initial value of the slider to start at 10, or at the minimum value if it's higher than 10
+                initial_min_km = max(10, min_km)
+                
+                km_range = st.slider("Select daily distance travelled range(kms)", min_km, max_km, (initial_min_km, max_km))
+                
+                # Apply the duration filter
+                df_filtered = df_filtered[(df_filtered['total_km_travelled'] >= km_range[0]) & (df_filtered['total_km_travelled'] <= km_range[1])]
 
         st.markdown("### Cache Management")
         if st.button("Clear Cache"):
@@ -364,7 +369,7 @@ def main():
         st.markdown("## Average Range")
     
         # Filter df_filtered for total_km_travelled > 15km
-        df_range = df_filtered[(df_filtered['total_km_travelled'] > 0) & (df_filtered['total_discharge_soc'] < 0)]
+        df_range = df_filtered[(df_filtered['total_km_travelled'] >= 0) & (df_filtered['total_discharge_soc'] < 0)]
 
         # Average Range of the Fleet Metric Calculation
         avg_range_fleet = np.sum(df_range['total_km_travelled']) * -100 / np.sum(df_range['total_discharge_soc'])
@@ -420,38 +425,22 @@ def main():
         # st.markdown("## ")
         # st.markdown("## ")
         # Filter df_filtered for total_km_travelled > 15km
-        df_range = df_filtered[(df_filtered['total_km_travelled'] > 0) & (df_filtered['total_discharge_soc'] < -0)]
+        df_range = df_filtered[(df_filtered['total_km_travelled'] >= 0) & (df_filtered['total_discharge_soc'] < 0)]
         
-        # if not df_range.empty:
-        #     # Group by reg_no and calculate the sum of total_km_travelled and the Range
-        #     df_grouped = df_range.groupby('reg_no').agg(
-        #         total_km_travelled_sum=('total_km_travelled', 'sum'),
-        #         total_discharge_soc_sum=('total_discharge_soc', 'sum')
-        #     ).reset_index()
-        #     df_grouped['Range'] = df_grouped['total_km_travelled_sum'] * (-100) / df_grouped['total_discharge_soc_sum']
-
-        #     # Format the DataFrame to match the screenshot layout
-        #     df_display = df_grouped[['reg_no', 'total_km_travelled_sum', 'Range']].rename(
-        #         columns={'reg_no': 'Registration Number', 'total_km_travelled_sum': 'Total KM Travelled'}
-        #     )
-            
         if not df_range.empty:
-            # Group by reg_no and chassis_number, and calculate the sum of total_km_travelled and total_discharge_soc
-            df_grouped = df_range.groupby(['chassis_number','reg_no']).agg(
+            # Group by reg_no and calculate the sum of total_km_travelled and the Range
+            df_grouped = df_range.groupby('reg_no').agg(
                 total_km_travelled_sum=('total_km_travelled', 'sum'),
                 total_discharge_soc_sum=('total_discharge_soc', 'sum')
             ).reset_index()
-            
             df_grouped['Range'] = df_grouped['total_km_travelled_sum'] * (-100) / df_grouped['total_discharge_soc_sum']
-        
+
             # Format the DataFrame to match the screenshot layout
-            df_display = df_grouped[['chassis_number','reg_no' , 'total_km_travelled_sum', 'Range']].rename(
-                columns={
-                    'chassis_number': 'Chassis Number',
-                    'reg_no': 'Registration Number', 
-                    'total_km_travelled_sum': 'Total KM Travelled'
-                }
+            df_display = df_grouped[['reg_no', 'total_km_travelled_sum', 'Range']].rename(
+                columns={'reg_no': 'Registration Number', 'total_km_travelled_sum': 'Total KM Travelled'}
             )
+            
+
             
             st.dataframe(df_display,height=400)
             
