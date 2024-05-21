@@ -234,10 +234,14 @@ def main():
                 else:
                     min_km, max_km = 0, 0  # Defaults when no data is available
                 
+                # Ensure min_km is less than max_km for the slider
+                if min_km == max_km:
+                    max_km += 1  # Increment max_km to create a valid range
+                
                 # Set the initial value of the slider to start at 10, or at the minimum value if it's higher than 10
                 initial_min_km = max(10, min_km)
                 
-                km_range = st.slider("Select daily distance travelled range(kms)", min_km, max_km, (initial_min_km, max_km))
+                km_range = st.slider("Select daily distance travelled range (kms)", min_km, max_km, (initial_min_km, max_km))
                 
                 # Apply the duration filter
                 df_filtered = df_filtered[(df_filtered['total_km_travelled'] >= km_range[0]) & (df_filtered['total_km_travelled'] <= km_range[1])]
