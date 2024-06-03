@@ -13,6 +13,8 @@ import pydeck as pdk
 import matplotlib.pyplot as plt
 import matplotlib as mpl
 from datetime import datetime, timedelta
+import pygwalker as pyg
+
 
 
 # client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
@@ -234,14 +236,10 @@ def main():
                 else:
                     min_km, max_km = 0, 0  # Defaults when no data is available
                 
-                # Ensure min_km is less than max_km for the slider
-                if min_km == max_km:
-                    max_km += 1  # Increment max_km to create a valid range
-                
                 # Set the initial value of the slider to start at 10, or at the minimum value if it's higher than 10
                 initial_min_km = max(10, min_km)
                 
-                km_range = st.slider("Select daily distance travelled range (kms)", min_km, max_km, (initial_min_km, max_km))
+                km_range = st.slider("Select daily distance travelled range(kms)", min_km, max_km, (initial_min_km, max_km))
                 
                 # Apply the duration filter
                 df_filtered = df_filtered[(df_filtered['total_km_travelled'] >= km_range[0]) & (df_filtered['total_km_travelled'] <= km_range[1])]
@@ -434,32 +432,41 @@ def main():
         else:
             st.write("Please select a date range and other filters to view analytics.")
     with col3:
-        st.markdown("## Distance travelled and range")
-        # st.markdown("## ")
-        # st.markdown("## ")
-        # st.markdown("## ")
-        # Filter df_filtered for total_km_travelled > 15km
+        st.markdown("## Distance travelled, Range and Runtime")
+            
+        # Filter df_filtered for total_km_travelled >= 0 and total_discharge_soc < 0
         df_range = df_filtered[(df_filtered['total_km_travelled'] >= 0) & (df_filtered['total_discharge_soc'] < 0)]
-        
+            
         if not df_range.empty:
-            # Group by reg_no and chassis_number, and calculate the sum of total_km_travelled and total_discharge_soc
-            df_grouped = df_range.groupby(['chassis_number','reg_no']).agg(
+            # Group by reg_no and chassis_number, and calculate the sum of total_km_travelled, total_discharge_soc, and total_runtime_minutes
+            df_grouped = df_range.groupby(['chassis_number', 'reg_no']).agg(
                 total_km_travelled_sum=('total_km_travelled', 'sum'),
-                total_discharge_soc_sum=('total_discharge_soc', 'sum')
+                total_discharge_soc_sum=('total_discharge_soc', 'sum'),
+                total_runtime_minutes_sum=('total_runtime_minutes', 'sum')
             ).reset_index()
-            
+                
             df_grouped['Range'] = df_grouped['total_km_travelled_sum'] * (-100) / df_grouped['total_discharge_soc_sum']
-        
+                
+            # Calculate Average Run Time
+            avg_run_time = df_filtered['total_runtime_minutes'].median()
+            st.markdown(f"#### Average Run Time: {avg_run_time:.2f} minutes")
+                
+            # Calculate Average Run Time Per Day for each group
+            avg_run_time_per_day = df_range.groupby(['chassis_number', 'reg_no'])['total_runtime_minutes'].median().reset_index(name='avg_run_time_per_day')
+            df_grouped = df_grouped.merge(avg_run_time_per_day, on=['chassis_number', 'reg_no'])
+                
             # Format the DataFrame to match the screenshot layout
-            df_display = df_grouped[['chassis_number','reg_no' , 'total_km_travelled_sum', 'Range']].rename(
+            df_display = df_grouped[['chassis_number', 'reg_no', 'total_km_travelled_sum', 'total_runtime_minutes_sum', 'avg_run_time_per_day', 'Range']].rename(
                 columns={
-                    'chassis_number': 'Chassis Number',
-                    'reg_no': 'Registration Number', 
-                    'total_km_travelled_sum': 'Total KM Travelled'
-                }
-            )
-            
-            st.dataframe(df_display,height=400)
+                        'chassis_number': 'Chassis Number',
+                        'reg_no': 'Registration Number', 
+                        'total_km_travelled_sum': 'Total KM Travelled',
+                        'total_runtime_minutes_sum': 'Total Runtime Minutes',
+                        'avg_run_time_per_day': 'Average Run Time Per Day'
+                    }
+                )
+                
+            st.dataframe(df_display, height=400)
         # if not df_range.empty:
         #     # Group by reg_no and calculate the sum of total_km_travelled and the Range
         #     df_grouped = df_range.groupby('reg_no').agg(
@@ -588,10 +595,21 @@ def main():
         st.markdown("## Day Wise Data")
         st.dataframe(df_filtered, height=300)
         
-    # Display the filtered dataframe below the charts
+        # PyGWalker integration for df_filtered
+        st.markdown("## Explore Day Wise Data")
+        pyg.walk(df_filtered, "Day Wise Data Exploration")
+    else:
+        st.write("df_filtered is empty")
+        
     if not df_filtered_tel.empty:
         st.markdown("## SOC Data")
         st.dataframe(df_filtered_tel, height=300)
+        
+        # PyGWalker integration for df_filtered_tel
+        st.markdown("## Explore SOC Data")
+        pyg.walk(df_filtered_tel, "SOC Data Exploration")
+    else:
+        st.write("df_filtered_tel is empty")
     
     # Display the filtered dataframe below the charts
     # if not df_filtered_tel.empty:
