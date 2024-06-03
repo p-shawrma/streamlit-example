@@ -595,9 +595,9 @@ def main():
         st.markdown("## Day Wise Data")
         st.dataframe(df_filtered, height=300)
         
-        # PyGWalker integration for df_filtered
-        st.markdown("## Explore Day Wise Data")
-        pyg.walk(df_filtered, "Day Wise Data Exploration")
+        # # PyGWalker integration for df_filtered
+        # st.markdown("## Explore Day Wise Data")
+        # pyg.walk(df_filtered, "Day Wise Data Exploration")
     else:
         st.write("df_filtered is empty")
         
@@ -605,9 +605,9 @@ def main():
         st.markdown("## SOC Data")
         st.dataframe(df_filtered_tel, height=300)
         
-        # PyGWalker integration for df_filtered_tel
-        st.markdown("## Explore SOC Data")
-        pyg.walk(df_filtered_tel, "SOC Data Exploration")
+        # # PyGWalker integration for df_filtered_tel
+        # st.markdown("## Explore SOC Data")
+        # pyg.walk(df_filtered_tel, "SOC Data Exploration")
     else:
         st.write("df_filtered_tel is empty")
     
