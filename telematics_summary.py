@@ -36,16 +36,16 @@ def get_data():
     )
     
     # Calculate the date 45 days ago from today
-    days_from = datetime.now() - timedelta(days=65)
+    days_from = datetime.now() - timedelta(days=45)
     days_to = datetime.now() - timedelta(days=30)
     
     # Parameterized query for pulkit_main_telematics table with date filter
-    query_main = "SELECT * FROM pulkit_main_telematics WHERE date >= %s AND date <= %s;"
-    df_main = pd.read_sql_query(query_main, conn, params=[days_from,days_to])
+    query_main = "SELECT * FROM pulkit_main_telematics WHERE date >= %s;"
+    df_main = pd.read_sql_query(query_main, conn, params=[days_from])
     
     # Parameterized query for pulkit_telematics_table with start_date filter
-    query_tel = "SELECT * FROM pulkit_telematics_table WHERE start_date >= %s AND start_date <= %s;"
-    df_tel = pd.read_sql_query(query_tel, conn, params=[days_from,days_to])
+    query_tel = "SELECT * FROM pulkit_telematics_table WHERE start_date >= %s;"
+    df_tel = pd.read_sql_query(query_tel, conn, params=[days_from])
 
     # SQL query
     query_cohort = f"""
@@ -111,10 +111,10 @@ def get_data():
         ROUND(AVG(slow_charge_soc)::numeric, 2) AS avg_slow_charging,
         ROUND(AVG(predicted_range)::numeric, 2) AS avg_average_range
     FROM pulkit_main_telematics
-    WHERE date >=  %s AND date <=  %s 
+    WHERE date >=  %s 
     GROUP BY vehicle_number, reg_no, telematics_number, chassis_number, date, partner_id, deployed_city, product
     """
-    df_cohort = pd.read_sql_query(query_cohort, conn, params=[days_from,days_to])
+    df_cohort = pd.read_sql_query(query_cohort, conn, params=[days_from])
     
     conn.close()
     
