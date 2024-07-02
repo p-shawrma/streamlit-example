@@ -15,8 +15,6 @@ import matplotlib as mpl
 from datetime import datetime, timedelta
 import pygwalker as pyg
 
-
-
 # client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
 
 # Set page configuration to wide mode and set page title
@@ -28,7 +26,6 @@ px.set_mapbox_access_token("pk.eyJ1IjoicC1zaGFybWEiLCJhIjoiY2xzNjRzbTY1MXNodjJsb
 
 # Function to connect to database and get data using psycopg2
 @st.cache_data
-
 def get_data():
     conn = psycopg2.connect(
         database="postgres",
@@ -40,7 +37,7 @@ def get_data():
     
     # Calculate the date 45 days ago from today
     days_from = datetime.now() - timedelta(days=100)
-    days_to = datetime.now() - timedelta(days=40)
+    days_to = datetime.now() - timedelta(days=60)
     
     # Parameterized query for pulkit_main_telematics table with date filter
     query_main = "SELECT * FROM pulkit_main_telematics WHERE date >= %s AND date <= %s;"
