@@ -467,8 +467,8 @@ def main():
             
         if not df_range.empty:
             # Define invalid values for each column
-            invalid_reg_no_values = [None, np.nan, "NA", "0", "FALSE", "NULL"]
-            invalid_telematics_values = [None, np.nan, "111111111111111", "FALSE", "11111111111111", "A"]
+            invalid_reg_no_values = [None, np.nan, "NA", "0", "FALSE", "NULL","false","False"]
+            invalid_telematics_values = [None, np.nan, "111111111111111", "FALSE", "11111111111111", "A","false","False"]
             
             # Fill missing or invalid values with placeholders
             df_range['chassis_number'] = replace_invalid_values(df_range['chassis_number'], 'Unknown Chassis', [None, np.nan, False, 0, '0'])
