@@ -135,6 +135,10 @@ def get_mapping_data():
     conn.close()
     
     return df_mapping.copy()
+
+def replace_invalid_values(series, placeholder, invalid_values):
+    return series.replace(invalid_values, placeholder).fillna(placeholder)
+
     
 def main():
     # if 'last_refresh' not in st.session_state:
@@ -462,16 +466,23 @@ def main():
         df_range = df_filtered[(df_filtered['total_km_travelled'] >= 0) & (df_filtered['total_discharge_soc'] < 0)]
             
         if not df_range.empty:
-            # Fill missing values with a placeholder to ensure they are included in the groupby
-            df_range['chassis_number'] = df_range['chassis_number'].fillna('Unknown Chassis')
-            df_range['reg_no'] = df_range['reg_no'].fillna('Unknown Reg')
-        
-            # Group by reg_no and chassis_number, and calculate the sum of total_km_travelled, total_discharge_soc, and total_runtime_minutes
-            df_grouped = df_range.groupby(['chassis_number', 'reg_no'], dropna=False).agg(
+            # Define invalid values for each column
+            invalid_reg_no_values = [None, np.nan, "NA", "0", "FALSE", "NULL"]
+            invalid_telematics_values = [None, np.nan, "111111111111111", "FALSE", "11111111111111", "A"]
+            
+            # Fill missing or invalid values with placeholders
+            df_range['chassis_number'] = replace_invalid_values(df_range['chassis_number'], 'Unknown Chassis', [None, np.nan, False, 0, '0'])
+            df_range['reg_no'] = replace_invalid_values(df_range['reg_no'], 'Unknown Reg', invalid_reg_no_values)
+            df_range['telematics_number'] = replace_invalid_values(df_range['telematics_number'], 'Unknown Telematics', invalid_telematics_values)
+            
+            # Group by reg_no, chassis_number, and telematics_number, and calculate the sum of total_km_travelled, total_discharge_soc, and total_runtime_minutes
+            df_grouped = df_range.groupby(['chassis_number', 'reg_no', 'telematics_number'], dropna=False).agg(
                 total_km_travelled_sum=('total_km_travelled', 'sum'),
                 total_discharge_soc_sum=('total_discharge_soc', 'sum'),
                 total_runtime_minutes_sum=('total_runtime_minutes', 'sum')
             ).reset_index()
+            
+
         
             # Calculate Range
             df_grouped['Range'] = df_grouped['total_km_travelled_sum'] * (-100) / df_grouped['total_discharge_soc_sum']
@@ -493,6 +504,7 @@ def main():
                 columns={
                     'chassis_number': 'Chassis Number',
                     'reg_no': 'Registration Number', 
+                    'telematics_number' : 'Telematics Number',
                     'total_km_travelled_sum': 'Total KM Travelled',
                     'total_runtime_minutes_sum': 'Total Runtime Minutes',
                     'avg_run_time_per_day': 'Average Run Time Per Day'
