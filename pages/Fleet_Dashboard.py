@@ -664,10 +664,14 @@ def main():
     df_filtered_mapping['reg_no'] = replace_invalid_values(df_filtered_mapping['reg_no'], 'Unknown Reg', invalid_reg_no_values)
     df_filtered_mapping['telematics_number'] = replace_invalid_values(df_filtered_mapping['telematics_number'], 'Unknown Telematics', invalid_telematics_values)
 
+    # Add row numbers
+    df_filtered_mapping.reset_index(drop=True, inplace=True)
+    df_filtered_mapping['Row Number'] = df_filtered_mapping.index + 1
+
     # Display the "List of Assets" DataFrame
     if not df_filtered_mapping.empty:
         st.markdown("## List of Assets")
-        st.dataframe(df_filtered_mapping[['chassis_number', 'reg_no', 'telematics_number', 'location', 'client_name', 'battery_type']], height=300)
+        st.dataframe(df_filtered_mapping[['Row Number', 'chassis_number', 'reg_no', 'telematics_number', 'location', 'client_name', 'battery_type']], height=300)
     else:
         st.write("No assets found for the selected filters.")
 
