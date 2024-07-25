@@ -435,36 +435,46 @@ def main():
         # Filter df_filtered for total_km_travelled >= 0 and total_discharge_soc < 0
         df_range = df_filtered[(df_filtered['total_km_travelled'] >= 0) & (df_filtered['total_discharge_soc'] < 0)]
             
-        if not df_range.empty:
-            # Group by reg_no and chassis_number, and calculate the sum of total_km_travelled, total_discharge_soc, and total_runtime_minutes
-            df_grouped = df_range.groupby(['chassis_number', 'reg_no']).agg(
-                total_km_travelled_sum=('total_km_travelled', 'sum'),
-                total_discharge_soc_sum=('total_discharge_soc', 'sum'),
-                total_runtime_minutes_sum=('total_runtime_minutes', 'sum')
-            ).reset_index()
-                
-            df_grouped['Range'] = df_grouped['total_km_travelled_sum'] * (-100) / df_grouped['total_discharge_soc_sum']
-                
-            # Calculate Average Run Time
-            avg_run_time = df_filtered['total_runtime_minutes'].median()
-            st.markdown(f"#### Average Run Time: {avg_run_time:.2f} minutes")
-                
-            # Calculate Average Run Time Per Day for each group
-            avg_run_time_per_day = df_range.groupby(['chassis_number', 'reg_no'])['total_runtime_minutes'].median().reset_index(name='avg_run_time_per_day')
-            df_grouped = df_grouped.merge(avg_run_time_per_day, on=['chassis_number', 'reg_no'])
-                
-            # Format the DataFrame to match the screenshot layout
-            df_display = df_grouped[['chassis_number', 'reg_no', 'total_km_travelled_sum', 'total_runtime_minutes_sum', 'avg_run_time_per_day', 'Range']].rename(
-                columns={
-                        'chassis_number': 'Chassis Number',
-                        'reg_no': 'Registration Number', 
-                        'total_km_travelled_sum': 'Total KM Travelled',
-                        'total_runtime_minutes_sum': 'Total Runtime Minutes',
-                        'avg_run_time_per_day': 'Average Run Time Per Day'
-                    }
-                )
-                
-            st.dataframe(df_display, height=400)
+    if not df_range.empty:
+        # Fill missing values with a placeholder to ensure they are included in the groupby
+        df_range['chassis_number'] = df_range['chassis_number'].fillna('Unknown Chassis')
+        df_range['reg_no'] = df_range['reg_no'].fillna('Unknown Reg')
+    
+        # Group by reg_no and chassis_number, and calculate the sum of total_km_travelled, total_discharge_soc, and total_runtime_minutes
+        df_grouped = df_range.groupby(['chassis_number', 'reg_no'], dropna=False).agg(
+            total_km_travelled_sum=('total_km_travelled', 'sum'),
+            total_discharge_soc_sum=('total_discharge_soc', 'sum'),
+            total_runtime_minutes_sum=('total_runtime_minutes', 'sum')
+        ).reset_index()
+    
+        # Calculate Range
+        df_grouped['Range'] = df_grouped['total_km_travelled_sum'] * (-100) / df_grouped['total_discharge_soc_sum']
+                    
+        # Calculate Average Run Time
+        avg_run_time = df_range['total_runtime_minutes'].median()
+        st.markdown(f"#### Average Run Time: {avg_run_time:.2f} minutes")
+                    
+        # Calculate Average Run Time Per Day for each group
+        avg_run_time_per_day = df_range.groupby(['chassis_number', 'reg_no'], dropna=False)['total_runtime_minutes'].median().reset_index(name='avg_run_time_per_day')
+        df_grouped = df_grouped.merge(avg_run_time_per_day, on=['chassis_number', 'reg_no'])
+    
+        # Replace placeholders with actual missing value representations
+        df_grouped['chassis_number'].replace('Unknown Chassis', None, inplace=True)
+        df_grouped['reg_no'].replace('Unknown Reg', None, inplace=True)
+                    
+        # Format the DataFrame to match the screenshot layout
+        df_display = df_grouped[['chassis_number', 'reg_no', 'total_km_travelled_sum', 'total_runtime_minutes_sum', 'avg_run_time_per_day', 'Range']].rename(
+            columns={
+                'chassis_number': 'Chassis Number',
+                'reg_no': 'Registration Number', 
+                'total_km_travelled_sum': 'Total KM Travelled',
+                'total_runtime_minutes_sum': 'Total Runtime Minutes',
+                'avg_run_time_per_day': 'Average Run Time Per Day'
+            }
+        )
+                    
+        st.dataframe(df_display, height=400)
+
         # if not df_range.empty:
         #     # Group by reg_no and calculate the sum of total_km_travelled and the Range
         #     df_grouped = df_range.groupby('reg_no').agg(
