@@ -39,12 +39,12 @@ def get_data():
     days_from = datetime.now() - timedelta(days=45)
     days_to = datetime.now() - timedelta(days=30)
     
-    # Parameterized query for pulkit_main_telematics table with date filter
-    query_main = "SELECT * FROM pulkit_main_telematics WHERE date >= %s;"
+    # Parameterized query for calculated_main_telematics table with date filter
+    query_main = "SELECT * FROM calculated_main_telematics WHERE date >= %s;"
     df_main = pd.read_sql_query(query_main, conn, params=[days_from])
     
-    # Parameterized query for pulkit_telematics_table with start_date filter
-    query_tel = "SELECT * FROM pulkit_telematics_table WHERE start_date >= %s;"
+    # Parameterized query for calculated_telematics_soc with start_date filter
+    query_tel = "SELECT * FROM calculated_telematics_soc WHERE start_date >= %s;"
     df_tel = pd.read_sql_query(query_tel, conn, params=[days_from])
 
     # SQL query
@@ -110,7 +110,7 @@ def get_data():
         ROUND(AVG(fast_charge_soc)::numeric, 2) AS avg_fast_charging,
         ROUND(AVG(slow_charge_soc)::numeric, 2) AS avg_slow_charging,
         ROUND(AVG(predicted_range)::numeric, 2) AS avg_average_range
-    FROM pulkit_main_telematics
+    FROM calculated_main_telematics
     WHERE date >=  %s 
     GROUP BY vehicle_number, reg_no, telematics_number, chassis_number, date, partner_id, deployed_city, product
     """
@@ -134,8 +134,8 @@ def main():
     #     st.experimental_rerun()
         
     df_main, df_tel,df_cohort = get_data()
-    df = df_main  # Use df for data from pulkit_main_telematics table
-    df2 = df_tel  # Use df2 for data from pulkit_telematics_table
+    df = df_main  # Use df for data from calculated_main_telematics table
+    df2 = df_tel  # Use df2 for data from calculated_telematics_soc
     df3 = df_cohort  # Use df3 for cohorting data
     
     # Sidebar filters
