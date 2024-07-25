@@ -214,7 +214,7 @@ def main():
                     df_filtered = df_filtered[df_filtered['product'].isin(selected_products)]
                     df_filtered_tel = df_filtered_tel[df_filtered_tel['product'].isin(selected_products)]
                     df_filtered_cohort = df_filtered_cohort[df_filtered_cohort['product'].isin(selected_products)]
-                    df_filtered_mapping = df_filtered_mapping[df_filtered_mapping['product'].isin(selected_products)]
+                    df_filtered_mapping = df_filtered_mapping[df_filtered_mapping['battery_type'].isin(selected_products)]
 
     
                 # Registration Number filter
