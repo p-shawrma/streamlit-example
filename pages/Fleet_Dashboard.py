@@ -655,11 +655,22 @@ def main():
     else:
         st.write("df_filtered_tel is empty")
 
+    # Define invalid values for each column
+    invalid_reg_no_values = [None, np.nan, "NA", "0", "FALSE", "NULL"]
+    invalid_telematics_values = [None, np.nan, "111111111111111", "FALSE", "11111111111111", "A"]
+
+    # Fill missing or invalid values with placeholders
+    df_filtered_mapping['chassis_number'] = replace_invalid_values(df_filtered_mapping['chassis_number'], 'Unknown Chassis', [None, np.nan, False, 0, '0'])
+    df_filtered_mapping['reg_no'] = replace_invalid_values(df_filtered_mapping['reg_no'], 'Unknown Reg', invalid_reg_no_values)
+    df_filtered_mapping['telematics_number'] = replace_invalid_values(df_filtered_mapping['telematics_number'], 'Unknown Telematics', invalid_telematics_values)
+
+    # Display the "List of Assets" DataFrame
     if not df_filtered_mapping.empty:
         st.markdown("## List of Assets")
-        st.dataframe(df_filtered_mapping, height=300)
+        st.dataframe(df_filtered_mapping[['chassis_number', 'reg_no', 'telematics_number', 'location', 'client_name', 'battery_type']], height=300)
     else:
         st.write("No assets found for the selected filters.")
+
     
     # Display the filtered dataframe below the charts
     # if not df_filtered_tel.empty:
