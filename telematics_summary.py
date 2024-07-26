@@ -39,11 +39,11 @@ def get_data():
     days_from = datetime.now() - timedelta(days=45)
     days_to = datetime.now() - timedelta(days=30)
     
-    # Parameterized query for pulkit_main_telematics table with date filter
+    # Parameterized query for calculated_main_telematics table with date filter
     query_main = "SELECT * FROM pulkit_main_telematics WHERE date >= %s;"
     df_main = pd.read_sql_query(query_main, conn, params=[days_from])
     
-    # Parameterized query for pulkit_telematics_table with start_date filter
+    # Parameterized query for calculated_telematics_soc with start_date filter
     query_tel = "SELECT * FROM pulkit_telematics_table WHERE start_date >= %s;"
     df_tel = pd.read_sql_query(query_tel, conn, params=[days_from])
 
@@ -120,6 +120,24 @@ def get_data():
     
     return df_main.copy(), df_tel.copy(),df_cohort.copy()
 
+@st.cache_data
+def get_mapping_data():
+    conn = psycopg2.connect(
+        database="postgres",
+        user='postgres.gqmpfexjoachyjgzkhdf',
+        password='Change@2015Log9',
+        host='aws-0-ap-south-1.pooler.supabase.com',
+        port='5432'
+    )
+
+    query_mapping = "SELECT reg_no, chassis_number, telematics_number, location, client_name, battery_type FROM mapping_table;"
+    df_mapping = pd.read_sql_query(query_mapping, conn)
+    conn.close()
+    
+    return df_mapping.copy()
+
+def replace_invalid_values(series, placeholder, invalid_values):
+    return series.replace(invalid_values, placeholder).fillna(placeholder)
 
     
 def main():
@@ -134,8 +152,9 @@ def main():
     #     st.experimental_rerun()
         
     df_main, df_tel,df_cohort = get_data()
-    df = df_main  # Use df for data from pulkit_main_telematics table
-    df2 = df_tel  # Use df2 for data from pulkit_telematics_table
+    df_mapping = get_mapping_data()
+    df = df_main  # Use df for data from calculated_main_telematics table
+    df2 = df_tel  # Use df2 for data from calculated_telematics_soc
     df3 = df_cohort  # Use df3 for cohorting data
     
     # Sidebar filters
@@ -164,6 +183,7 @@ def main():
         df_filtered = df_main
         df_filtered_tel = df_tel
         df_filtered_cohort = df_cohort
+        df_filtered_mapping = df_mapping
         
         if len(date_range) == 2 and date_range[0] and date_range[1]:
                 # ... [your existing data filtering code]
@@ -186,6 +206,8 @@ def main():
                     df_filtered = df_filtered[df_filtered['partner_id'].isin(selected_partner_ids)]
                     df_filtered_tel = df_filtered_tel[df_filtered_tel['partner_id'].isin(selected_partner_ids)]
                     df_filtered_cohort = df_filtered_cohort[df_filtered_cohort['partner_id'].isin(selected_partner_ids)]
+                    df_filtered_mapping = df_filtered_mapping[df_filtered_mapping['client_name'].isin(selected_partner_ids)]
+
     
                 # Product filter
                 products = df_filtered['product'].dropna().unique().tolist()
@@ -196,6 +218,8 @@ def main():
                     df_filtered = df_filtered[df_filtered['product'].isin(selected_products)]
                     df_filtered_tel = df_filtered_tel[df_filtered_tel['product'].isin(selected_products)]
                     df_filtered_cohort = df_filtered_cohort[df_filtered_cohort['product'].isin(selected_products)]
+                    df_filtered_mapping = df_filtered_mapping[df_filtered_mapping['battery_type'].isin(selected_products)]
+
     
                 # Registration Number filter
                 reg_nos = df_filtered['reg_no'].dropna().unique().tolist()
@@ -206,6 +230,8 @@ def main():
                     df_filtered = df_filtered[df_filtered['reg_no'].isin(selected_reg_nos)]
                     df_filtered_tel = df_filtered_tel[df_filtered_tel['reg_no'].isin(selected_reg_nos)]
                     df_filtered_cohort = df_filtered_cohort[df_filtered_cohort['reg_no'].isin(selected_reg_nos)]
+                    df_filtered_mapping = df_filtered_mapping[df_filtered_mapping['reg_no'].isin(selected_reg_nos)]
+
                 
                 # Chassis Number filter
                 chassis_nos = df_filtered['chassis_number'].dropna().unique().tolist()
@@ -216,6 +242,8 @@ def main():
                     df_filtered = df_filtered[df_filtered['chassis_number'].isin(selected_chassis_nos)]
                     df_filtered_tel = df_filtered_tel[df_filtered_tel['chassis_number'].isin(selected_chassis_nos)]
                     df_filtered_cohort = df_filtered_cohort[df_filtered_cohort['chassis_number'].isin(selected_chassis_nos)]
+                    df_filtered_mapping = df_filtered_mapping[df_filtered_mapping['chassis_number'].isin(selected_chassis_nos)]
+
 
                 # City filter
                 cities = df_filtered['deployed_city'].dropna().unique().tolist()
@@ -226,6 +254,7 @@ def main():
                     df_filtered = df_filtered[df_filtered['deployed_city'].isin(selected_cities)]
                     df_filtered_tel = df_filtered_tel[df_filtered_tel['deployed_city'].isin(selected_cities)]
                     df_filtered_cohort = df_filtered_cohort[df_filtered_cohort['deployed_city'].isin(selected_cities)]
+                    df_filtered_mapping = df_filtered_mapping[df_filtered_mapping['location'].isin(selected_cities)]
                 
                 # Update the duration slider based on filtered data
                 if not df_filtered.empty:
@@ -429,41 +458,58 @@ def main():
             st.metric("Average Fast Charge SOC in a day", f"{avg_fast_charge_soc:.2f}")
         else:
             st.write("Please select a date range and other filters to view analytics.")
+    
     with col3:
         st.markdown("## Distance travelled, Range and Runtime")
             
         # Filter df_filtered for total_km_travelled >= 0 and total_discharge_soc < 0
-        df_range = df_filtered[(df_filtered['total_km_travelled'] >= 0) & (df_filtered['total_discharge_soc'] < 0)]
+        df_range = df_filtered[(df_filtered['total_km_travelled'] >= 0)]
             
         if not df_range.empty:
-            # Group by reg_no and chassis_number, and calculate the sum of total_km_travelled, total_discharge_soc, and total_runtime_minutes
-            df_grouped = df_range.groupby(['chassis_number', 'reg_no']).agg(
+            # Define invalid values for each column
+            invalid_reg_no_values = [None, np.nan, "NA", "0", "FALSE", "NULL","false","False"]
+            invalid_telematics_values = [None, np.nan, "111111111111111", "FALSE", "11111111111111", "A","false","False"]
+            
+            # Fill missing or invalid values with placeholders
+            df_range['chassis_number'] = replace_invalid_values(df_range['chassis_number'], 'Unknown Chassis', [None, np.nan, False, 0, '0'])
+            df_range['reg_no'] = replace_invalid_values(df_range['reg_no'], 'Unknown Reg', invalid_reg_no_values)
+            df_range['telematics_number'] = replace_invalid_values(df_range['telematics_number'], 'Unknown Telematics', invalid_telematics_values)
+            
+            # Group by reg_no, chassis_number, and telematics_number, and calculate the sum of total_km_travelled, total_discharge_soc, and total_runtime_minutes
+            df_grouped = df_range.groupby(['chassis_number', 'reg_no', 'telematics_number'], dropna=False).agg(
                 total_km_travelled_sum=('total_km_travelled', 'sum'),
                 total_discharge_soc_sum=('total_discharge_soc', 'sum'),
                 total_runtime_minutes_sum=('total_runtime_minutes', 'sum')
             ).reset_index()
-                
+            
+            # Calculate Range
             df_grouped['Range'] = df_grouped['total_km_travelled_sum'] * (-100) / df_grouped['total_discharge_soc_sum']
-                
+            
             # Calculate Average Run Time
-            avg_run_time = df_filtered['total_runtime_minutes'].median()
+            avg_run_time = df_range['total_runtime_minutes'].median()
             st.markdown(f"#### Average Run Time: {avg_run_time:.2f} minutes")
-                
+            
             # Calculate Average Run Time Per Day for each group
-            avg_run_time_per_day = df_range.groupby(['chassis_number', 'reg_no'])['total_runtime_minutes'].median().reset_index(name='avg_run_time_per_day')
-            df_grouped = df_grouped.merge(avg_run_time_per_day, on=['chassis_number', 'reg_no'])
-                
+            avg_run_time_per_day = df_range.groupby(['chassis_number', 'reg_no', 'telematics_number'], dropna=False)['total_runtime_minutes'].median().reset_index(name='avg_run_time_per_day')
+            df_grouped = df_grouped.merge(avg_run_time_per_day, on=['chassis_number', 'reg_no', 'telematics_number'])
+            
+            # Replace placeholders with actual missing value representations
+            df_grouped['chassis_number'].replace('Unknown Chassis', None, inplace=True)
+            df_grouped['reg_no'].replace('Unknown Reg', None, inplace=True)
+            df_grouped['telematics_number'].replace('Unknown Telematics', None, inplace=True)
+            
             # Format the DataFrame to match the screenshot layout
-            df_display = df_grouped[['chassis_number', 'reg_no', 'total_km_travelled_sum', 'total_runtime_minutes_sum', 'avg_run_time_per_day', 'Range']].rename(
+            df_display = df_grouped[['chassis_number', 'reg_no', 'telematics_number', 'total_km_travelled_sum', 'total_runtime_minutes_sum', 'avg_run_time_per_day', 'Range']].rename(
                 columns={
-                        'chassis_number': 'Chassis Number',
-                        'reg_no': 'Registration Number', 
-                        'total_km_travelled_sum': 'Total KM Travelled',
-                        'total_runtime_minutes_sum': 'Total Runtime Minutes',
-                        'avg_run_time_per_day': 'Average Run Time Per Day'
-                    }
-                )
-                
+                    'chassis_number': 'Chassis Number',
+                    'reg_no': 'Registration Number', 
+                    'telematics_number': 'Telematics Number',
+                    'total_km_travelled_sum': 'Total KM Travelled',
+                    'total_runtime_minutes_sum': 'Total Runtime Minutes',
+                    'avg_run_time_per_day': 'Average Run Time Per Day'
+                }
+            )
+            
             st.dataframe(df_display, height=400)
         # if not df_range.empty:
         #     # Group by reg_no and calculate the sum of total_km_travelled and the Range
@@ -608,6 +654,27 @@ def main():
         # pyg.walk(df_filtered_tel, "SOC Data Exploration")
     else:
         st.write("df_filtered_tel is empty")
+
+    # Define invalid values for each column
+    invalid_reg_no_values = [None, np.nan, "NA", "0", "FALSE", "NULL"]
+    invalid_telematics_values = [None, np.nan, "111111111111111", "FALSE", "11111111111111", "A"]
+
+    # Fill missing or invalid values with placeholders
+    df_filtered_mapping['chassis_number'] = replace_invalid_values(df_filtered_mapping['chassis_number'], 'Unknown Chassis', [None, np.nan, False, 0, '0'])
+    df_filtered_mapping['reg_no'] = replace_invalid_values(df_filtered_mapping['reg_no'], 'Unknown Reg', invalid_reg_no_values)
+    df_filtered_mapping['telematics_number'] = replace_invalid_values(df_filtered_mapping['telematics_number'], 'Unknown Telematics', invalid_telematics_values)
+
+    # Add row numbers
+    df_filtered_mapping.reset_index(drop=True, inplace=True)
+    df_filtered_mapping['Row Number'] = df_filtered_mapping.index + 1
+
+    # Display the "List of Assets" DataFrame
+    if not df_filtered_mapping.empty:
+        st.markdown("## List of Assets")
+        st.dataframe(df_filtered_mapping[['Row Number', 'chassis_number', 'reg_no', 'telematics_number', 'location', 'client_name', 'battery_type']], height=300)
+    else:
+        st.write("No assets found for the selected filters.")
+
     
     # Display the filtered dataframe below the charts
     # if not df_filtered_tel.empty:
