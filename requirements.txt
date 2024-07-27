@@ -12,3 +12,4 @@ scikit-learn
 requests
 datetime 
 pygwalker
+clickhouse_connect
