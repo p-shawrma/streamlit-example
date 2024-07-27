@@ -42,22 +42,26 @@ px.set_mapbox_access_token("pk.eyJ1IjoicC1zaGFybWEiLCJhIjoiY2xzNjRzbTY1MXNodjJsb
 @st.cache_data
 def get_data():
     # Calculate the date 45 days ago from today
-    days_from = datetime.now() - timedelta(days=45)
-    days_to = datetime.now() - timedelta(days=30)
+    days_from = (datetime.now() - timedelta(days=45)).strftime('%Y-%m-%d')
+    days_to = (datetime.now() - timedelta(days=30)).strftime('%Y-%m-%d')
 
-    # Format dates as strings for the queries
-    days_from_str = days_from.strftime('%Y-%m-%d')
-    days_to_str = days_to.strftime('%Y-%m-%d')
+    # Query for calculated_main_telematics table with date filter
+    query_main = f"""
+    SELECT * FROM landing_zone_telematics.calculated_main_telematics 
+    WHERE date >= '{days_from}'
+    """
+    result_main = client.query(query_main)
+    df_main = pd.DataFrame(result_main.result_rows, columns=result_main.column_names)
 
-    # Parameterized query for calculated_main_telematics table with date filter
-    query_main = "SELECT * FROM calculated_main_telematics WHERE date >= %(days_from)s;"
-    df_main = client.query_dataframe(query_main, parameters={'days_from': days_from_str})
+    # Query for calculated_telematics_soc with start_date filter
+    query_tel = f"""
+    SELECT * FROM landing_zone_telematics.calculated_telematics_soc 
+    WHERE start_date >= '{days_from}'
+    """
+    result_tel = client.query(query_tel)
+    df_tel = pd.DataFrame(result_tel.result_rows, columns=result_tel.column_names)
 
-    # Parameterized query for calculated_telematics_soc with start_date filter
-    query_tel = "SELECT * FROM calculated_telematics_soc WHERE start_date >= %(days_from)s;"
-    df_tel = client.query_dataframe(query_tel, parameters={'days_from': days_from_str})
-
-    # SQL query for cohort data
+    # Query for cohort data
     query_cohort = f"""
     SELECT 
         vehicle_number,
@@ -115,16 +119,17 @@ def get_data():
             WHEN AVG(predicted_range) > 90 AND AVG(predicted_range) <= 100 THEN 'g. 90 - 100 kms'
             ELSE 'h. > 100 kms'
         END AS predicted_range_bucket,
-        ROUND(AVG(total_km_travelled)::numeric, 2) AS avg_distance,
-        ROUND(AVG(total_discharge_soc)::numeric, 2) AS avg_c_d_cycles,
-        ROUND(AVG(fast_charge_soc)::numeric, 2) AS avg_fast_charging,
-        ROUND(AVG(slow_charge_soc)::numeric, 2) AS avg_slow_charging,
-        ROUND(AVG(predicted_range)::numeric, 2) AS avg_average_range
-    FROM calculated_main_telematics
-    WHERE date >= %(days_from)s 
+        ROUND(AVG(total_km_travelled), 2) AS avg_distance,
+        ROUND(AVG(total_discharge_soc), 2) AS avg_c_d_cycles,
+        ROUND(AVG(fast_charge_soc), 2) AS avg_fast_charging,
+        ROUND(AVG(slow_charge_soc), 2) AS avg_slow_charging,
+        ROUND(AVG(predicted_range), 2) AS avg_average_range
+    FROM landing_zone_telematics.calculated_main_telematics
+    WHERE date >= '{days_from}' 
     GROUP BY vehicle_number, reg_no, telematics_number, chassis_number, date, partner_id, deployed_city, product
     """
-    df_cohort = client.query_dataframe(query_cohort, parameters={'days_from': days_from_str})
+    result_cohort = client.query(query_cohort)
+    df_cohort = pd.DataFrame(result_cohort.result_rows, columns=result_cohort.column_names)
 
     return df_main.copy(), df_tel.copy(), df_cohort.copy()
     
