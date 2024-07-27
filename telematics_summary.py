@@ -38,7 +38,7 @@ st.set_page_config(layout="wide", page_title="Vehicle Telematics Dashboard")
 # Set Mapbox access token
 px.set_mapbox_access_token("pk.eyJ1IjoicC1zaGFybWEiLCJhIjoiY2xzNjRzbTY1MXNodjJsbXUwcG0wNG50ciJ9.v32bwq-wi6whz9zkn6ecow")
 
-# Function to connect to database and get data using psycopg2
+# Function to connect to ClickHouse and get data
 @st.cache_data
 def get_data():
     # Calculate the date 45 days ago from today
@@ -72,61 +72,83 @@ def get_data():
         deployed_city,
         product,
         date,
-        SUM(total_discharge_soc) AS total_discharge_soc,
-        CASE 
-            WHEN AVG(total_km_travelled) <= 10 THEN 'a. < 10 kms'
-            WHEN AVG(total_km_travelled) > 10 AND AVG(total_km_travelled) <= 30 THEN 'b. 10 - 30 kms'
-            WHEN AVG(total_km_travelled) > 30 AND AVG(total_km_travelled) <= 50 THEN 'c. 30 - 50 kms'
-            WHEN AVG(total_km_travelled) > 50 AND AVG(total_km_travelled) <= 80 THEN 'd. 50 - 80 kms'
-            WHEN AVG(total_km_travelled) > 80 AND AVG(total_km_travelled) <= 110 THEN 'e. 80 - 110 kms'
-            WHEN AVG(total_km_travelled) > 110 AND AVG(total_km_travelled) <= 140 THEN 'f. 110 - 140 kms'
-            ELSE 'g. > 140 kms'
-        END AS distance_bucket,
-        CASE 
-            WHEN AVG(total_discharge_soc)*-1 <= 20 THEN '01. < 20'
-            WHEN AVG(total_discharge_soc)*-1 > 20 AND AVG(total_discharge_soc)*-1 <= 50 THEN '02. 20 to 50'
-            WHEN AVG(total_discharge_soc)*-1 > 50 AND AVG(total_discharge_soc)*-1 <= 80 THEN '03. 50 to 80'
-            WHEN AVG(total_discharge_soc)*-1 > 80 AND AVG(total_discharge_soc)*-1 <= 120 THEN '04. 80 to 120'
-            WHEN AVG(total_discharge_soc)*-1 > 120 AND AVG(total_discharge_soc)*-1 <= 170 THEN '05. 120 to 170'
-            WHEN AVG(total_discharge_soc)*-1 > 170 AND AVG(total_discharge_soc)*-1 <= 240 THEN '06. 170 to 240'
-            ELSE '07. > 240'
-        END AS total_discharge_soc_bucket,
-        CASE 
-            WHEN AVG(fast_charge_soc) <= 20 THEN '01. < 0.20'
-            WHEN AVG(fast_charge_soc) > 20 AND AVG(fast_charge_soc) <= 50 THEN '02. 20 to 50'
-            WHEN AVG(fast_charge_soc) > 50 AND AVG(fast_charge_soc) <= 80 THEN '03. 50 to 80'
-            WHEN AVG(fast_charge_soc) > 80 AND AVG(fast_charge_soc) <= 120 THEN '04. 80 to 120'
-            WHEN AVG(fast_charge_soc) > 120 AND AVG(fast_charge_soc) <= 170 THEN '05. 120 to 170'
-            WHEN AVG(fast_charge_soc) > 170 AND AVG(fast_charge_soc) <= 240 THEN '06. 170 to 240'
-            ELSE '07. > 240'
-        END AS fast_charging_bucket,
-        CASE 
-            WHEN AVG(slow_charge_soc) <= 20 THEN '01. < 0.20'
-            WHEN AVG(slow_charge_soc) > 20 AND AVG(slow_charge_soc) <= 50 THEN '02. 20 to 50'
-            WHEN AVG(slow_charge_soc) > 50 AND AVG(slow_charge_soc) <= 80 THEN '03. 50 to 80'
-            WHEN AVG(slow_charge_soc) > 80 AND AVG(slow_charge_soc) <= 120 THEN '04. 80 to 120'
-            WHEN AVG(slow_charge_soc) > 120 AND AVG(slow_charge_soc) <= 170 THEN '05. 120 to 170'
-            WHEN AVG(slow_charge_soc) > 170 AND AVG(slow_charge_soc) <= 240 THEN '06. 170 to 240'
-            ELSE '07. > 240'
-        END AS slow_charging_bucket,
-        CASE 
-            WHEN AVG(predicted_range) <= 40 THEN 'a. <= 40 kms'
-            WHEN AVG(predicted_range) > 40 AND AVG(predicted_range) <= 50 THEN 'b. 40 - 50 kms'
-            WHEN AVG(predicted_range) > 50 AND AVG(predicted_range) <= 60 THEN 'c. 50 - 60 kms'
-            WHEN AVG(predicted_range) > 60 AND AVG(predicted_range) <= 70 THEN 'd. 60 - 70 kms'
-            WHEN AVG(predicted_range) > 70 AND AVG(predicted_range) <= 80 THEN 'e. 70 - 80 kms'
-            WHEN AVG(predicted_range) > 80 AND AVG(predicted_range) <= 90 THEN 'f. 80 - 90 kms'
-            WHEN AVG(predicted_range) > 90 AND AVG(predicted_range) <= 100 THEN 'g. 90 - 100 kms'
-            ELSE 'h. > 100 kms'
-        END AS predicted_range_bucket,
-        ROUND(AVG(total_km_travelled), 2) AS avg_distance,
-        ROUND(AVG(total_discharge_soc), 2) AS avg_c_d_cycles,
-        ROUND(AVG(fast_charge_soc), 2) AS avg_fast_charging,
-        ROUND(AVG(slow_charge_soc), 2) AS avg_slow_charging,
-        ROUND(AVG(predicted_range), 2) AS avg_average_range
-    FROM landing_zone_telematics.calculated_main_telematics
-    WHERE date >= '{days_from}' 
-    GROUP BY vehicle_number, reg_no, telematics_number, chassis_number, date, partner_id, deployed_city, product
+        total_discharge_soc,
+        distance_bucket,
+        total_discharge_soc_bucket,
+        fast_charging_bucket,
+        slow_charging_bucket,
+        predicted_range_bucket,
+        avg_distance,
+        avg_c_d_cycles,
+        avg_fast_charging,
+        avg_slow_charging,
+        avg_average_range
+    FROM (
+        SELECT 
+            vehicle_number,
+            reg_no,
+            telematics_number,
+            chassis_number,
+            partner_id,
+            deployed_city,
+            product,
+            date,
+            SUM(total_discharge_soc) AS total_discharge_soc,
+            AVG(total_km_travelled) AS avg_distance,
+            AVG(total_discharge_soc) AS avg_c_d_cycles,
+            AVG(fast_charge_soc) AS avg_fast_charging,
+            AVG(slow_charge_soc) AS avg_slow_charging,
+            AVG(predicted_range) AS avg_average_range,
+            CASE 
+                WHEN AVG(total_km_travelled) <= 10 THEN 'a. < 10 kms'
+                WHEN AVG(total_km_travelled) > 10 AND AVG(total_km_travelled) <= 30 THEN 'b. 10 - 30 kms'
+                WHEN AVG(total_km_travelled) > 30 AND AVG(total_km_travelled) <= 50 THEN 'c. 30 - 50 kms'
+                WHEN AVG(total_km_travelled) > 50 AND AVG(total_km_travelled) <= 80 THEN 'd. 50 - 80 kms'
+                WHEN AVG(total_km_travelled) > 80 AND AVG(total_km_travelled) <= 110 THEN 'e. 80 - 110 kms'
+                WHEN AVG(total_km_travelled) > 110 AND AVG(total_km_travelled) <= 140 THEN 'f. 110 - 140 kms'
+                ELSE 'g. > 140 kms'
+            END AS distance_bucket,
+            CASE 
+                WHEN AVG(total_discharge_soc)*-1 <= 20 THEN '01. < 20'
+                WHEN AVG(total_discharge_soc)*-1 > 20 AND AVG(total_discharge_soc)*-1 <= 50 THEN '02. 20 to 50'
+                WHEN AVG(total_discharge_soc)*-1 > 50 AND AVG(total_discharge_soc)*-1 <= 80 THEN '03. 50 to 80'
+                WHEN AVG(total_discharge_soc)*-1 > 80 AND AVG(total_discharge_soc)*-1 <= 120 THEN '04. 80 to 120'
+                WHEN AVG(total_discharge_soc)*-1 > 120 AND AVG(total_discharge_soc)*-1 <= 170 THEN '05. 120 to 170'
+                WHEN AVG(total_discharge_soc)*-1 > 170 AND AVG(total_discharge_soc)*-1 <= 240 THEN '06. 170 to 240'
+                ELSE '07. > 240'
+            END AS total_discharge_soc_bucket,
+            CASE 
+                WHEN AVG(fast_charge_soc) <= 20 THEN '01. < 0.20'
+                WHEN AVG(fast_charge_soc) > 20 AND AVG(fast_charge_soc) <= 50 THEN '02. 20 to 50'
+                WHEN AVG(fast_charge_soc) > 50 AND AVG(fast_charge_soc) <= 80 THEN '03. 50 to 80'
+                WHEN AVG(fast_charge_soc) > 80 AND AVG(fast_charge_soc) <= 120 THEN '04. 80 to 120'
+                WHEN AVG(fast_charge_soc) > 120 AND AVG(fast_charge_soc) <= 170 THEN '05. 120 to 170'
+                WHEN AVG(fast_charge_soc) > 170 AND AVG(fast_charge_soc) <= 240 THEN '06. 170 to 240'
+                ELSE '07. > 240'
+            END AS fast_charging_bucket,
+            CASE 
+                WHEN AVG(slow_charge_soc) <= 20 THEN '01. < 0.20'
+                WHEN AVG(slow_charge_soc) > 20 AND AVG(slow_charge_soc) <= 50 THEN '02. 20 to 50'
+                WHEN AVG(slow_charge_soc) > 50 AND AVG(slow_charge_soc) <= 80 THEN '03. 50 to 80'
+                WHEN AVG(slow_charge_soc) > 80 AND AVG(slow_charge_soc) <= 120 THEN '04. 80 to 120'
+                WHEN AVG(slow_charge_soc) > 120 AND AVG(slow_charge_soc) <= 170 THEN '05. 120 to 170'
+                WHEN AVG(slow_charge_soc) > 170 AND AVG(slow_charge_soc) <= 240 THEN '06. 170 to 240'
+                ELSE '07. > 240'
+            END AS slow_charging_bucket,
+            CASE 
+                WHEN AVG(predicted_range) <= 40 THEN 'a. <= 40 kms'
+                WHEN AVG(predicted_range) > 40 AND AVG(predicted_range) <= 50 THEN 'b. 40 - 50 kms'
+                WHEN AVG(predicted_range) > 50 AND AVG(predicted_range) <= 60 THEN 'c. 50 - 60 kms'
+                WHEN AVG(predicted_range) > 60 AND AVG(predicted_range) <= 70 THEN 'd. 60 - 70 kms'
+                WHEN AVG(predicted_range) > 70 AND AVG(predicted_range) <= 80 THEN 'e. 70 - 80 kms'
+                WHEN AVG(predicted_range) > 80 AND AVG(predicted_range) <= 90 THEN 'f. 80 - 90 kms'
+                WHEN AVG(predicted_range) > 90 AND AVG(predicted_range) <= 100 THEN 'g. 90 - 100 kms'
+                ELSE 'h. > 100 kms'
+            END AS predicted_range_bucket
+        FROM landing_zone_telematics.calculated_main_telematics
+        WHERE date >= '{days_from}'
+        GROUP BY vehicle_number, reg_no, telematics_number, chassis_number, partner_id, deployed_city, product, date
+    )
     """
     result_cohort = client.query(query_cohort)
     df_cohort = pd.DataFrame(result_cohort.result_rows, columns=result_cohort.column_names)
