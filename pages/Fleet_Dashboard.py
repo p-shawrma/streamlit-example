@@ -14,8 +14,22 @@ import matplotlib.pyplot as plt
 import matplotlib as mpl
 from datetime import datetime, timedelta
 import pygwalker as pyg
+import clickhouse_connect
 
-# client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
+# ClickHouse connection details
+ch_host = 'a84a1hn9ig.ap-south-1.aws.clickhouse.cloud'
+ch_user = 'default'
+ch_password = 'dKd.Y9kFMv06x'
+ch_database = 'landing_zone_telematics'
+
+# Create ClickHouse client
+client = clickhouse_connect.get_client(
+    host=ch_host,
+    user=ch_user,
+    password=ch_password,
+    database=ch_database,
+    secure=True
+)
 
 # Set page configuration to wide mode and set page title
 st.set_page_config(layout="wide", page_title="Vehicle Telematics Dashboard")
@@ -27,27 +41,23 @@ px.set_mapbox_access_token("pk.eyJ1IjoicC1zaGFybWEiLCJhIjoiY2xzNjRzbTY1MXNodjJsb
 # Function to connect to database and get data using psycopg2
 @st.cache_data
 def get_data():
-    conn = psycopg2.connect(
-        database="postgres",
-        user='postgres.gqmpfexjoachyjgzkhdf',
-        password='Change@2015Log9',
-        host='aws-0-ap-south-1.pooler.supabase.com',
-        port='5432'
-    )
-    
     # Calculate the date 45 days ago from today
     days_from = datetime.now() - timedelta(days=45)
     days_to = datetime.now() - timedelta(days=30)
-    
-    # Parameterized query for calculated_main_telematics table with date filter
-    query_main = "SELECT * FROM calculated_main_telematics WHERE date >= %s;"
-    df_main = pd.read_sql_query(query_main, conn, params=[days_from])
-    
-    # Parameterized query for calculated_telematics_soc with start_date filter
-    query_tel = "SELECT * FROM calculated_telematics_soc WHERE start_date >= %s;"
-    df_tel = pd.read_sql_query(query_tel, conn, params=[days_from])
 
-    # SQL query
+    # Format dates as strings for the queries
+    days_from_str = days_from.strftime('%Y-%m-%d')
+    days_to_str = days_to.strftime('%Y-%m-%d')
+
+    # Parameterized query for calculated_main_telematics table with date filter
+    query_main = "SELECT * FROM calculated_main_telematics WHERE date >= %(days_from)s;"
+    df_main = client.query_dataframe(query_main, parameters={'days_from': days_from_str})
+
+    # Parameterized query for calculated_telematics_soc with start_date filter
+    query_tel = "SELECT * FROM calculated_telematics_soc WHERE start_date >= %(days_from)s;"
+    df_tel = client.query_dataframe(query_tel, parameters={'days_from': days_from_str})
+
+    # SQL query for cohort data
     query_cohort = f"""
     SELECT 
         vehicle_number,
@@ -111,15 +121,13 @@ def get_data():
         ROUND(AVG(slow_charge_soc)::numeric, 2) AS avg_slow_charging,
         ROUND(AVG(predicted_range)::numeric, 2) AS avg_average_range
     FROM calculated_main_telematics
-    WHERE date >=  %s 
+    WHERE date >= %(days_from)s 
     GROUP BY vehicle_number, reg_no, telematics_number, chassis_number, date, partner_id, deployed_city, product
     """
-    df_cohort = pd.read_sql_query(query_cohort, conn, params=[days_from])
-    
-    conn.close()
-    
-    return df_main.copy(), df_tel.copy(),df_cohort.copy()
+    df_cohort = client.query_dataframe(query_cohort, parameters={'days_from': days_from_str})
 
+    return df_main.copy(), df_tel.copy(), df_cohort.copy()
+    
 @st.cache_data
 def get_mapping_data():
     conn = psycopg2.connect(
@@ -141,8 +149,21 @@ def replace_invalid_values(series, placeholder, invalid_values):
 
     
 def main():
-    df_main, df_tel, df_cohort = get_data()
+    # if 'last_refresh' not in st.session_state:
+    #     st.session_state['last_refresh'] = time.time()
+    # # Check if the refresh interval has passed
+    # refresh_interval = 3600  # seconds (e.g., 300 seconds = 5 minutes)
+    # current_time = time.time()
+    # if current_time - st.session_state['last_refresh'] > refresh_interval:
+    #     st.session_state['last_refresh'] = current_time
+    #     st.cache_data.clear()
+    #     st.experimental_rerun()
+        
+    df_main, df_tel,df_cohort = get_data()
     df_mapping = get_mapping_data()
+    df = df_main  # Use df for data from calculated_main_telematics table
+    df2 = df_tel  # Use df2 for data from calculated_telematics_soc
+    df3 = df_cohort  # Use df3 for cohorting data
     
     # Sidebar filters
     with st.sidebar:
@@ -153,18 +174,12 @@ def main():
         max_date = df_main['date'].max()
         min_date = df_main['date'].min()
         
-        # Print out the dates to debug
-        st.write("Max Date:", max_date)
-        st.write("Min Date:", min_date)
-        
-        if pd.isna(min_date) or pd.isna(max_date):
-            st.error("Date column contains invalid values.")
-            return
-        
         # Calculate the start date for the last 7 days range
         start_date_last_7_days = max_date - pd.Timedelta(days=6)
         
+        # Correcting the previous oversight:
         # Ensure the date_range variable correctly uses the last 7 days as the default value
+        # and that min_value and max_value parameters are correctly set to define the allowable date range.
         date_range = st.date_input(
             'Select Date Range', 
             value=[start_date_last_7_days, max_date],  # Sets default range to last 7 days
@@ -172,94 +187,103 @@ def main():
             max_value=max_date   # The latest date a user can select
         )
         
+
         df_filtered = df_main
         df_filtered_tel = df_tel
         df_filtered_cohort = df_cohort
         df_filtered_mapping = df_mapping
         
         if len(date_range) == 2 and date_range[0] and date_range[1]:
-            df_filtered = df_filtered[(df_filtered['date'] >= pd.Timestamp(date_range[0])) & (df_filtered['date'] <= pd.Timestamp(date_range[1]))]
-            
-            df_filtered_tel['end_date'] = pd.to_datetime(df_filtered_tel['end_date'], errors='coerce')
-            df_filtered_cohort['date'] = pd.to_datetime(df_filtered_cohort['date'], errors='coerce')
-            
-            df_filtered_tel = df_filtered_tel[(df_filtered_tel['end_date'] >= pd.Timestamp(date_range[0])) & (df_filtered_tel['end_date'] <= pd.Timestamp(date_range[1]))]
-            df_filtered_cohort = df_filtered_cohort[(df_filtered_cohort['date'] >= pd.Timestamp(date_range[0])) & (df_filtered_cohort['date'] <= pd.Timestamp(date_range[1]))]
-            
-            # Customer Name filter
-            partner_ids = df_filtered['partner_id'].dropna().unique().tolist()
-            selected_partner_ids = st.multiselect('Customer Name', partner_ids)
-    
-            # Filter dataframe by customer name if selected
-            if selected_partner_ids:
-                df_filtered = df_filtered[df_filtered['partner_id'].isin(selected_partner_ids)]
-                df_filtered_tel = df_filtered_tel[df_filtered_tel['partner_id'].isin(selected_partner_ids)]
-                df_filtered_cohort = df_filtered_cohort[df_filtered_cohort['partner_id'].isin(selected_partner_ids)]
-                df_filtered_mapping = df_filtered_mapping[df_filtered_mapping['client_name'].isin(selected_partner_ids)]
-    
-            # Product filter
-            products = df_filtered['product'].dropna().unique().tolist()
-            selected_products = st.multiselect('Product', products)
-    
-            # Filter dataframe by product if selected
-            if selected_products:
-                df_filtered = df_filtered[df_filtered['product'].isin(selected_products)]
-                df_filtered_tel = df_filtered_tel[df_filtered_tel['product'].isin(selected_products)]
-                df_filtered_cohort = df_filtered_cohort[df_filtered_cohort['product'].isin(selected_products)]
-                df_filtered_mapping = df_filtered_mapping[df_filtered_mapping['battery_type'].isin(selected_products)]
-    
-            # Registration Number filter
-            reg_nos = df_filtered['reg_no'].dropna().unique().tolist()
-            selected_reg_nos = st.multiselect('Registration Number', reg_nos)
-    
-            # Filter dataframe by registration number if selected
-            if selected_reg_nos:
-                df_filtered = df_filtered[df_filtered['reg_no'].isin(selected_reg_nos)]
-                df_filtered_tel = df_filtered_tel[df_filtered_tel['reg_no'].isin(selected_reg_nos)]
-                df_filtered_cohort = df_filtered_cohort[df_filtered_cohort['reg_no'].isin(selected_reg_nos)]
-                df_filtered_mapping = df_filtered_mapping[df_filtered_mapping['reg_no'].isin(selected_reg_nos)]
+                # ... [your existing data filtering code]
+                df_filtered = df_filtered[(df_filtered['date'] >= pd.Timestamp(date_range[0])) & (df_filtered['date'] <= pd.Timestamp(date_range[1]))]
                 
-            # Chassis Number filter
-            chassis_nos = df_filtered['chassis_number'].dropna().unique().tolist()
-            selected_chassis_nos = st.multiselect('Chassis Number', chassis_nos)
-    
-            # Filter dataframe by registration number if selected
-            if selected_chassis_nos:
-                df_filtered = df_filtered[df_filtered['chassis_number'].isin(selected_chassis_nos)]
-                df_filtered_tel = df_filtered_tel[df_filtered_tel['chassis_number'].isin(selected_chassis_nos)]
-                df_filtered_cohort = df_filtered_cohort[df_filtered_cohort['chassis_number'].isin(selected_chassis_nos)]
-                df_filtered_mapping = df_filtered_mapping[df_filtered_mapping['chassis_number'].isin(selected_chassis_nos)]
-    
-            # City filter
-            cities = df_filtered['deployed_city'].dropna().unique().tolist()
-            selected_cities = st.multiselect('City', cities)
-    
-            # Filter dataframe by city if selected
-            if selected_cities:
-                df_filtered = df_filtered[df_filtered['deployed_city'].isin(selected_cities)]
-                df_filtered_tel = df_filtered_tel[df_filtered_tel['deployed_city'].isin(selected_cities)]
-                df_filtered_cohort = df_filtered_cohort[df_filtered_cohort['deployed_city'].isin(selected_cities)]
-                df_filtered_mapping = df_filtered_mapping[df_filtered_mapping['location'].isin(selected_cities)]
+                df_filtered_tel['end_date'] = pd.to_datetime(df_filtered_tel['end_date'])
                 
-            # Update the duration slider based on filtered data
-            if not df_filtered.empty:
-                min_km, max_km = df_filtered['total_km_travelled'].agg(['min', 'max'])
-                min_km, max_km = int(min_km), int(max_km)
-            else:
-                min_km, max_km = 0, 0  # Defaults when no data is available
+                df_filtered_cohort['date'] = pd.to_datetime(df_filtered_cohort['date'])
             
-            # Set the initial value of the slider to start at 10, or at the minimum value if it's higher than 10
-            initial_min_km = max(10, min_km)
+                df_filtered_tel = df_filtered_tel[(df_filtered_tel['end_date'] >= pd.Timestamp(date_range[0])) & (df_filtered_tel['end_date'] <= pd.Timestamp(date_range[1]))]
+
+                df_filtered_cohort = df_filtered_cohort[(df_filtered_cohort['date'] >= pd.Timestamp(date_range[0])) & (df_filtered_cohort['date'] <= pd.Timestamp(date_range[1]))]
             
-            km_range = st.slider("Select daily distance travelled range(kms)", min_km, max_km, (initial_min_km, max_km))
-            
-            # Apply the duration filter
-            df_filtered = df_filtered[(df_filtered['total_km_travelled'] >= km_range[0]) & (df_filtered['total_km_travelled'] <= km_range[1])]
+                # Customer Name filter
+                partner_ids = df_filtered['partner_id'].dropna().unique().tolist()
+                selected_partner_ids = st.multiselect('Customer Name', partner_ids)
     
+                # Filter dataframe by customer name if selected
+                if selected_partner_ids:
+                    df_filtered = df_filtered[df_filtered['partner_id'].isin(selected_partner_ids)]
+                    df_filtered_tel = df_filtered_tel[df_filtered_tel['partner_id'].isin(selected_partner_ids)]
+                    df_filtered_cohort = df_filtered_cohort[df_filtered_cohort['partner_id'].isin(selected_partner_ids)]
+                    df_filtered_mapping = df_filtered_mapping[df_filtered_mapping['client_name'].isin(selected_partner_ids)]
+
+    
+                # Product filter
+                products = df_filtered['product'].dropna().unique().tolist()
+                selected_products = st.multiselect('Product', products)
+    
+                # Filter dataframe by product if selected
+                if selected_products:
+                    df_filtered = df_filtered[df_filtered['product'].isin(selected_products)]
+                    df_filtered_tel = df_filtered_tel[df_filtered_tel['product'].isin(selected_products)]
+                    df_filtered_cohort = df_filtered_cohort[df_filtered_cohort['product'].isin(selected_products)]
+                    df_filtered_mapping = df_filtered_mapping[df_filtered_mapping['battery_type'].isin(selected_products)]
+
+    
+                # Registration Number filter
+                reg_nos = df_filtered['reg_no'].dropna().unique().tolist()
+                selected_reg_nos = st.multiselect('Registration Number', reg_nos)
+    
+                # Filter dataframe by registration number if selected
+                if selected_reg_nos:
+                    df_filtered = df_filtered[df_filtered['reg_no'].isin(selected_reg_nos)]
+                    df_filtered_tel = df_filtered_tel[df_filtered_tel['reg_no'].isin(selected_reg_nos)]
+                    df_filtered_cohort = df_filtered_cohort[df_filtered_cohort['reg_no'].isin(selected_reg_nos)]
+                    df_filtered_mapping = df_filtered_mapping[df_filtered_mapping['reg_no'].isin(selected_reg_nos)]
+
+                
+                # Chassis Number filter
+                chassis_nos = df_filtered['chassis_number'].dropna().unique().tolist()
+                selected_chassis_nos = st.multiselect('Chassis Number', chassis_nos)
+    
+                # Filter dataframe by registration number if selected
+                if selected_chassis_nos:
+                    df_filtered = df_filtered[df_filtered['chassis_number'].isin(selected_chassis_nos)]
+                    df_filtered_tel = df_filtered_tel[df_filtered_tel['chassis_number'].isin(selected_chassis_nos)]
+                    df_filtered_cohort = df_filtered_cohort[df_filtered_cohort['chassis_number'].isin(selected_chassis_nos)]
+                    df_filtered_mapping = df_filtered_mapping[df_filtered_mapping['chassis_number'].isin(selected_chassis_nos)]
+
+
+                # City filter
+                cities = df_filtered['deployed_city'].dropna().unique().tolist()
+                selected_cities = st.multiselect('City', cities)
+    
+                # Filter dataframe by city if selected
+                if selected_cities:
+                    df_filtered = df_filtered[df_filtered['deployed_city'].isin(selected_cities)]
+                    df_filtered_tel = df_filtered_tel[df_filtered_tel['deployed_city'].isin(selected_cities)]
+                    df_filtered_cohort = df_filtered_cohort[df_filtered_cohort['deployed_city'].isin(selected_cities)]
+                    df_filtered_mapping = df_filtered_mapping[df_filtered_mapping['location'].isin(selected_cities)]
+                
+                # Update the duration slider based on filtered data
+                if not df_filtered.empty:
+                    min_km, max_km = df_filtered['total_km_travelled'].agg(['min', 'max'])
+                    min_km, max_km = int(min_km), int(max_km)
+                else:
+                    min_km, max_km = 0, 0  # Defaults when no data is available
+                
+                # Set the initial value of the slider to start at 10, or at the minimum value if it's higher than 10
+                initial_min_km = max(10, min_km)
+                
+                km_range = st.slider("Select daily distance travelled range(kms)", min_km, max_km, (initial_min_km, max_km))
+                
+                # Apply the duration filter
+                df_filtered = df_filtered[(df_filtered['total_km_travelled'] >= km_range[0]) & (df_filtered['total_km_travelled'] <= km_range[1])]
+
         st.markdown("### Cache Management")
         if st.button("Clear Cache"):
             st.cache_data.clear()
             st.experimental_rerun()
+
     
     
     # Layout: 3 columns
