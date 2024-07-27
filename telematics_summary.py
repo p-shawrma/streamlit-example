@@ -14,8 +14,22 @@ import matplotlib.pyplot as plt
 import matplotlib as mpl
 from datetime import datetime, timedelta
 import pygwalker as pyg
+import clickhouse_connect
 
-# client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
+# ClickHouse connection details
+ch_host = 'a84a1hn9ig.ap-south-1.aws.clickhouse.cloud'
+ch_user = 'default'
+ch_password = 'dKd.Y9kFMv06x'
+ch_database = 'landing_zone_telematics'
+
+# Create ClickHouse client
+client = clickhouse_connect.get_client(
+    host=ch_host,
+    user=ch_user,
+    password=ch_password,
+    database=ch_database,
+    secure=True
+)
 
 # Set page configuration to wide mode and set page title
 st.set_page_config(layout="wide", page_title="Vehicle Telematics Dashboard")
@@ -27,27 +41,23 @@ px.set_mapbox_access_token("pk.eyJ1IjoicC1zaGFybWEiLCJhIjoiY2xzNjRzbTY1MXNodjJsb
 # Function to connect to database and get data using psycopg2
 @st.cache_data
 def get_data():
-    conn = psycopg2.connect(
-        database="postgres",
-        user='postgres.gqmpfexjoachyjgzkhdf',
-        password='Change@2015Log9',
-        host='aws-0-ap-south-1.pooler.supabase.com',
-        port='5432'
-    )
-    
     # Calculate the date 45 days ago from today
     days_from = datetime.now() - timedelta(days=45)
     days_to = datetime.now() - timedelta(days=30)
-    
-    # Parameterized query for calculated_main_telematics table with date filter
-    query_main = "SELECT * FROM pulkit_main_telematics WHERE date >= %s;"
-    df_main = pd.read_sql_query(query_main, conn, params=[days_from])
-    
-    # Parameterized query for calculated_telematics_soc with start_date filter
-    query_tel = "SELECT * FROM pulkit_telematics_table WHERE start_date >= %s;"
-    df_tel = pd.read_sql_query(query_tel, conn, params=[days_from])
 
-    # SQL query
+    # Format dates as strings for the queries
+    days_from_str = days_from.strftime('%Y-%m-%d')
+    days_to_str = days_to.strftime('%Y-%m-%d')
+
+    # Parameterized query for calculated_main_telematics table with date filter
+    query_main = "SELECT * FROM calculated_main_telematics WHERE date >= %(days_from)s;"
+    df_main = client.query_dataframe(query_main, parameters={'days_from': days_from_str})
+
+    # Parameterized query for calculated_telematics_soc with start_date filter
+    query_tel = "SELECT * FROM calculated_telematics_soc WHERE start_date >= %(days_from)s;"
+    df_tel = client.query_dataframe(query_tel, parameters={'days_from': days_from_str})
+
+    # SQL query for cohort data
     query_cohort = f"""
     SELECT 
         vehicle_number,
@@ -110,16 +120,14 @@ def get_data():
         ROUND(AVG(fast_charge_soc)::numeric, 2) AS avg_fast_charging,
         ROUND(AVG(slow_charge_soc)::numeric, 2) AS avg_slow_charging,
         ROUND(AVG(predicted_range)::numeric, 2) AS avg_average_range
-    FROM pulkit_main_telematics
-    WHERE date >=  %s 
+    FROM calculated_main_telematics
+    WHERE date >= %(days_from)s 
     GROUP BY vehicle_number, reg_no, telematics_number, chassis_number, date, partner_id, deployed_city, product
     """
-    df_cohort = pd.read_sql_query(query_cohort, conn, params=[days_from])
-    
-    conn.close()
-    
-    return df_main.copy(), df_tel.copy(),df_cohort.copy()
+    df_cohort = client.query_dataframe(query_cohort, parameters={'days_from': days_from_str})
 
+    return df_main.copy(), df_tel.copy(), df_cohort.copy()
+    
 @st.cache_data
 def get_mapping_data():
     conn = psycopg2.connect(
