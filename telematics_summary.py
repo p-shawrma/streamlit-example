@@ -267,7 +267,7 @@ def main():
         st.markdown("### Cache Management")
         if st.button("Clear Cache"):
             st.cache_data.clear()
-            st.experimental_rerun()
+            # st.experimental_rerun()
 
     
     
