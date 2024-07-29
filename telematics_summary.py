@@ -453,11 +453,11 @@ def main():
             st.write("Please select a date range and other filters to view analytics.")
     
     with col3:
-        st.markdown("## Distance travelled, Range and Runtime")
-            
+       st.markdown("## Distance travelled, Range and Runtime")
+        
         # Filter df_filtered for total_km_travelled >= 0 and total_discharge_soc < 0
         df_range = df_filtered[(df_filtered['total_km_travelled'] >= 0)]
-                
+            
         if not df_range.empty:
             # Define invalid values for each column
             invalid_reg_no_values = [None, np.nan, "NA", "0", "FALSE", "NULL", "false", "False"]
