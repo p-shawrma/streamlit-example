@@ -218,6 +218,10 @@ def main():
 
             df_filtered = df_filtered[(df_filtered['total_km_travelled'] >= km_range[0]) & (df_filtered['total_km_travelled'] <= km_range[1])]
 
+            st.markdown("### Cache Management")
+            if st.button("Clear Cache"):
+                st.cache_data.clear()
+
     col1, col2, col3 = st.columns(3)
 
     with col1:
