@@ -483,8 +483,8 @@ def main():
             st.markdown(f"#### Average Run Time: {avg_run_time:.2f} minutes")
             
             # Calculate Average Run Time Per Day for each group
-            avg_run_time_per_day = df_range.groupby(['chassis_number', 'reg_no', 'telematics_number'], dropna=False)['total_runtime_minutes'].median().reset_index(name='avg_run_time_per_day')
-            df_grouped = df_grouped.merge(avg_run_time_per_day, on=['chassis_number', 'reg_no', 'telematics_number'])
+            avg_run_time_per_day = df_range.groupby(['partner_id','chassis_number', 'reg_no', 'telematics_number'], dropna=False)['total_runtime_minutes'].median().reset_index(name='avg_run_time_per_day')
+            df_grouped = df_grouped.merge(avg_run_time_per_day, on=['partner_id','chassis_number', 'reg_no', 'telematics_number'])
             
             # Replace placeholders with actual missing value representations
             df_grouped['chassis_number'].replace('Unknown Chassis', None, inplace=True)
@@ -492,8 +492,9 @@ def main():
             df_grouped['telematics_number'].replace('Unknown Telematics', None, inplace=True)
             
             # Format the DataFrame to match the screenshot layout
-            df_display = df_grouped[['chassis_number', 'reg_no', 'telematics_number', 'total_km_travelled_sum', 'total_runtime_minutes_sum', 'avg_run_time_per_day', 'Range']].rename(
+            df_display = df_grouped[['partner_id','chassis_number', 'reg_no', 'telematics_number', 'total_km_travelled_sum', 'total_runtime_minutes_sum', 'avg_run_time_per_day', 'Range']].rename(
                 columns={
+                    'partner_id':'Customer',
                     'chassis_number': 'Chassis Number',
                     'reg_no': 'Registration Number', 
                     'telematics_number': 'Telematics Number',
