@@ -453,23 +453,23 @@ def main():
             st.write("Please select a date range and other filters to view analytics.")
     
     with col3:
-       st.markdown("## Distance travelled, Range and Runtime")
-        
+        st.markdown("## Distance travelled, Range and Runtime")
+            
         # Filter df_filtered for total_km_travelled >= 0 and total_discharge_soc < 0
         df_range = df_filtered[(df_filtered['total_km_travelled'] >= 0)]
             
         if not df_range.empty:
             # Define invalid values for each column
-            invalid_reg_no_values = [None, np.nan, "NA", "0", "FALSE", "NULL", "false", "False"]
-            invalid_telematics_values = [None, np.nan, "111111111111111", "FALSE", "11111111111111", "A", "false", "False"]
+            invalid_reg_no_values = [None, np.nan, "NA", "0", "FALSE", "NULL","false","False"]
+            invalid_telematics_values = [None, np.nan, "111111111111111", "FALSE", "11111111111111", "A","false","False"]
             
             # Fill missing or invalid values with placeholders
             df_range['chassis_number'] = replace_invalid_values(df_range['chassis_number'], 'Unknown Chassis', [None, np.nan, False, 0, '0'])
             df_range['reg_no'] = replace_invalid_values(df_range['reg_no'], 'Unknown Reg', invalid_reg_no_values)
             df_range['telematics_number'] = replace_invalid_values(df_range['telematics_number'], 'Unknown Telematics', invalid_telematics_values)
             
-            # Group by partner_id, reg_no, chassis_number, and telematics_number, and calculate the sum of total_km_travelled, total_discharge_soc, and total_runtime_minutes
-            df_grouped = df_range.groupby(['partner_id', 'chassis_number', 'reg_no', 'telematics_number'], dropna=False).agg(
+            # Group by reg_no, chassis_number, and telematics_number, and calculate the sum of total_km_travelled, total_discharge_soc, and total_runtime_minutes
+            df_grouped = df_range.groupby(['chassis_number', 'reg_no', 'telematics_number'], dropna=False).agg(
                 total_km_travelled_sum=('total_km_travelled', 'sum'),
                 total_discharge_soc_sum=('total_discharge_soc', 'sum'),
                 total_runtime_minutes_sum=('total_runtime_minutes', 'sum')
@@ -483,8 +483,8 @@ def main():
             st.markdown(f"#### Average Run Time: {avg_run_time:.2f} minutes")
             
             # Calculate Average Run Time Per Day for each group
-            avg_run_time_per_day = df_range.groupby(['partner_id', 'chassis_number', 'reg_no', 'telematics_number'], dropna=False)['total_runtime_minutes'].median().reset_index(name='avg_run_time_per_day')
-            df_grouped = df_grouped.merge(avg_run_time_per_day, on=['partner_id', 'chassis_number', 'reg_no', 'telematics_number'])
+            avg_run_time_per_day = df_range.groupby(['chassis_number', 'reg_no', 'telematics_number'], dropna=False)['total_runtime_minutes'].median().reset_index(name='avg_run_time_per_day')
+            df_grouped = df_grouped.merge(avg_run_time_per_day, on=['chassis_number', 'reg_no', 'telematics_number'])
             
             # Replace placeholders with actual missing value representations
             df_grouped['chassis_number'].replace('Unknown Chassis', None, inplace=True)
@@ -492,9 +492,8 @@ def main():
             df_grouped['telematics_number'].replace('Unknown Telematics', None, inplace=True)
             
             # Format the DataFrame to match the screenshot layout
-            df_display = df_grouped[['partner_id', 'chassis_number', 'reg_no', 'telematics_number', 'total_km_travelled_sum', 'total_runtime_minutes_sum', 'avg_run_time_per_day', 'Range']].rename(
+            df_display = df_grouped[['chassis_number', 'reg_no', 'telematics_number', 'total_km_travelled_sum', 'total_runtime_minutes_sum', 'avg_run_time_per_day', 'Range']].rename(
                 columns={
-                    'partner_id': 'Partner ID',
                     'chassis_number': 'Chassis Number',
                     'reg_no': 'Registration Number', 
                     'telematics_number': 'Telematics Number',
