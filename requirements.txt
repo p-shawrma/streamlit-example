@@ -15,3 +15,6 @@ pygwalker
 clickhouse_connect
 haversine
 Nominatim
+sqlalchemy
+geopy
+haversine
