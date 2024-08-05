@@ -5,131 +5,27 @@ from streamlit_echarts import st_echarts
 import numpy as np
 import os
 import time
+import requests
 import plotly.express as px
 import plotly.subplots as sp
 from plotly.subplots import make_subplots
 import plotly.graph_objects as go
 import pydeck as pdk
-import matplotlib.pyplot as plt
-import matplotlib as mpl
+import datetime
 from datetime import datetime, timedelta
-import pygwalker as pyg
-import clickhouse_connect
+import matplotlib.pyplot as plt
+import altair as alt
 
-# ClickHouse connection details
-ch_host = 'a84a1hn9ig.ap-south-1.aws.clickhouse.cloud'
-ch_user = 'default'
-ch_password = 'dKd.Y9kFMv06x'
-ch_database = 'landing_zone_telematics'
 
-# Create ClickHouse client
-client = clickhouse_connect.get_client(
-    host=ch_host,
-    user=ch_user,
-    password=ch_password,
-    database=ch_database,
-    secure=True
-)
+
 
 # Set page configuration to wide mode and set page title
 st.set_page_config(layout="wide", page_title="Vehicle Telematics Dashboard")
 
-# Mapbox Access Token
-# Set Mapbox access token
-px.set_mapbox_access_token("pk.eyJ1IjoicC1zaGFybWEiLCJhIjoiY2xzNjRzbTY1MXNodjJsbXUwcG0wNG50ciJ9.v32bwq-wi6whz9zkn6ecow")
-
 # Function to connect to database and get data using psycopg2
 @st.cache_data
+
 def get_data():
-    # Calculate the date 45 days ago from today
-    days_from = datetime.now() - timedelta(days=45)
-    days_to = datetime.now() - timedelta(days=30)
-
-    # Format dates as strings for the queries
-    days_from_str = days_from.strftime('%Y-%m-%d')
-    days_to_str = days_to.strftime('%Y-%m-%d')
-
-    # Parameterized query for calculated_main_telematics table with date filter
-    query_main = "SELECT * FROM calculated_main_telematics WHERE date >= %(days_from)s;"
-    df_main = client.query_dataframe(query_main, parameters={'days_from': days_from_str})
-
-    # Parameterized query for calculated_telematics_soc with start_date filter
-    query_tel = "SELECT * FROM calculated_telematics_soc WHERE start_date >= %(days_from)s;"
-    df_tel = client.query_dataframe(query_tel, parameters={'days_from': days_from_str})
-
-    # SQL query for cohort data
-    query_cohort = f"""
-    SELECT 
-        vehicle_number,
-        reg_no,
-        telematics_number,
-        chassis_number,
-        partner_id,
-        deployed_city,
-        product,
-        date,
-        SUM(total_discharge_soc) AS total_discharge_soc,
-        CASE 
-            WHEN AVG(total_km_travelled) <= 10 THEN 'a. < 10 kms'
-            WHEN AVG(total_km_travelled) > 10 AND AVG(total_km_travelled) <= 30 THEN 'b. 10 - 30 kms'
-            WHEN AVG(total_km_travelled) > 30 AND AVG(total_km_travelled) <= 50 THEN 'c. 30 - 50 kms'
-            WHEN AVG(total_km_travelled) > 50 AND AVG(total_km_travelled) <= 80 THEN 'd. 50 - 80 kms'
-            WHEN AVG(total_km_travelled) > 80 AND AVG(total_km_travelled) <= 110 THEN 'e. 80 - 110 kms'
-            WHEN AVG(total_km_travelled) > 110 AND AVG(total_km_travelled) <= 140 THEN 'f. 110 - 140 kms'
-            ELSE 'g. > 140 kms'
-        END AS distance_bucket,
-        CASE 
-            WHEN AVG(total_discharge_soc)*-1 <= 20 THEN '01. < 20'
-            WHEN AVG(total_discharge_soc)*-1 > 20 AND AVG(total_discharge_soc)*-1 <= 50 THEN '02. 20 to 50'
-            WHEN AVG(total_discharge_soc)*-1 > 50 AND AVG(total_discharge_soc)*-1 <= 80 THEN '03. 50 to 80'
-            WHEN AVG(total_discharge_soc)*-1 > 80 AND AVG(total_discharge_soc)*-1 <= 120 THEN '04. 80 to 120'
-            WHEN AVG(total_discharge_soc)*-1 > 120 AND AVG(total_discharge_soc)*-1 <= 170 THEN '05. 120 to 170'
-            WHEN AVG(total_discharge_soc)*-1 > 170 AND AVG(total_discharge_soc)*-1 <= 240 THEN '06. 170 to 240'
-            ELSE '07. > 240'
-        END AS total_discharge_soc_bucket,
-        CASE 
-            WHEN AVG(fast_charge_soc) <= 20 THEN '01. < 0.20'
-            WHEN AVG(fast_charge_soc) > 20 AND AVG(fast_charge_soc) <= 50 THEN '02. 20 to 50'
-            WHEN AVG(fast_charge_soc) > 50 AND AVG(fast_charge_soc) <= 80 THEN '03. 50 to 80'
-            WHEN AVG(fast_charge_soc) > 80 AND AVG(fast_charge_soc) <= 120 THEN '04. 80 to 120'
-            WHEN AVG(fast_charge_soc) > 120 AND AVG(fast_charge_soc) <= 170 THEN '05. 120 to 170'
-            WHEN AVG(fast_charge_soc) > 170 AND AVG(fast_charge_soc) <= 240 THEN '06. 170 to 240'
-            ELSE '07. > 240'
-        END AS fast_charging_bucket,
-        CASE 
-            WHEN AVG(slow_charge_soc) <= 20 THEN '01. < 0.20'
-            WHEN AVG(slow_charge_soc) > 20 AND AVG(slow_charge_soc) <= 50 THEN '02. 20 to 50'
-            WHEN AVG(slow_charge_soc) > 50 AND AVG(slow_charge_soc) <= 80 THEN '03. 50 to 80'
-            WHEN AVG(slow_charge_soc) > 80 AND AVG(slow_charge_soc) <= 120 THEN '04. 80 to 120'
-            WHEN AVG(slow_charge_soc) > 120 AND AVG(slow_charge_soc) <= 170 THEN '05. 120 to 170'
-            WHEN AVG(slow_charge_soc) > 170 AND AVG(slow_charge_soc) <= 240 THEN '06. 170 to 240'
-            ELSE '07. > 240'
-        END AS slow_charging_bucket,
-        CASE 
-            WHEN AVG(predicted_range) <= 40 THEN 'a. <= 40 kms'
-            WHEN AVG(predicted_range) > 40 AND AVG(predicted_range) <= 50 THEN 'b. 40 - 50 kms'
-            WHEN AVG(predicted_range) > 50 AND AVG(predicted_range) <= 60 THEN 'c. 50 - 60 kms'
-            WHEN AVG(predicted_range) > 60 AND AVG(predicted_range) <= 70 THEN 'd. 60 - 70 kms'
-            WHEN AVG(predicted_range) > 70 AND AVG(predicted_range) <= 80 THEN 'e. 70 - 80 kms'
-            WHEN AVG(predicted_range) > 80 AND AVG(predicted_range) <= 90 THEN 'f. 80 - 90 kms'
-            WHEN AVG(predicted_range) > 90 AND AVG(predicted_range) <= 100 THEN 'g. 90 - 100 kms'
-            ELSE 'h. > 100 kms'
-        END AS predicted_range_bucket,
-        ROUND(AVG(total_km_travelled)::numeric, 2) AS avg_distance,
-        ROUND(AVG(total_discharge_soc)::numeric, 2) AS avg_c_d_cycles,
-        ROUND(AVG(fast_charge_soc)::numeric, 2) AS avg_fast_charging,
-        ROUND(AVG(slow_charge_soc)::numeric, 2) AS avg_slow_charging,
-        ROUND(AVG(predicted_range)::numeric, 2) AS avg_average_range
-    FROM calculated_main_telematics
-    WHERE date >= %(days_from)s 
-    GROUP BY vehicle_number, reg_no, telematics_number, chassis_number, date, partner_id, deployed_city, product
-    """
-    df_cohort = client.query_dataframe(query_cohort, parameters={'days_from': days_from_str})
-
-    return df_main.copy(), df_tel.copy(), df_cohort.copy()
-    
-@st.cache_data
-def get_mapping_data():
     conn = psycopg2.connect(
         database="postgres",
         user='postgres.gqmpfexjoachyjgzkhdf',
@@ -137,34 +33,229 @@ def get_mapping_data():
         host='aws-0-ap-south-1.pooler.supabase.com',
         port='5432'
     )
-
-    query_mapping = "SELECT reg_no, chassis_number, telematics_number, location, client_name, battery_type FROM mapping_table;"
-    df_mapping = pd.read_sql_query(query_mapping, conn)
+    
+    
+    # Calculate the date 45 days ago from today
+    days_ago_45 = datetime.now() - timedelta(days=60)
+    
+    # Parameterized query for pulkit_main_telematics table with date filter
+    query_main = "SELECT * FROM pulkit_main_telematics WHERE date >= %s;"
+    df_main = pd.read_sql_query(query_main, conn, params=[days_ago_45])
+    
+    # Parameterized query for pulkit_telematics_table with start_date filter
+    query_tel = "SELECT * FROM pulkit_telematics_table WHERE start_date >= %s;"
+    df_tel = pd.read_sql_query(query_tel, conn, params=[days_ago_45])
+    
     conn.close()
     
-    return df_mapping.copy()
+    return df_main.copy(), df_tel.copy()
 
-def replace_invalid_values(series, placeholder, invalid_values):
-    return series.replace(invalid_values, placeholder).fillna(placeholder)
 
+
+# Replace with your API authentication details
+graphql_api_url = 'https://log9-api.aquilatrack.com/graphql'  # Replace with your actual API endpoint
+username = "EV_Demo"
+password = "Demo@123"
+
+# Define the GraphQL query with variables
+graphql_query = '''
+    query GenerateAuthTokenAPI($username: String!, $password: String!) {
+        generateAuthTokenAPI(username: $username, password: $password) {
+            token
+        }
+    }'''
+
+# Define the variables to be passed in the query
+variables = {
+    'username': username,
+    'password': password
+}
+
+# Create a JSON payload with the GraphQL query and variables
+payload = {
+    'query': graphql_query,
+    'variables': variables
+}
+
+# Send the GraphQL query using a POST request
+response = requests.post(graphql_api_url, json=payload)
+
+# Check for a successful response and handle the data
+if response.status_code == 200:
+    data = response.json()
+    token = data['data']['generateAuthTokenAPI']['token']
+    # print(f"Generated Token: {token}")
+else:
+    print(f"Failed to execute GraphQL query. Status code: {response.status_code}")
+    print(response.text)
+
+
+# Use the auth_token in the headers for subsequent API requests
+headers = {
+    "Authorization": f"Bearer {token}"
+}
+
+def getReportPagination(uniqueId, start_ts, end_ts):
+    graphql_api_url = 'https://log9-api.aquilatrack.com/graphql'
+
+    all_data = []  # List to accumulate data from each day
+
+    # Calculate the total number of days between start_ts and end_ts
+    total_days = (end_ts - start_ts) // 86400  # 86400 seconds in a day
+
+    for day in range(total_days + 1):
+        # Calculate start and end timestamps for the current day
+        current_day_start_ts = start_ts + day * 86400
+        current_day_end_ts = min(current_day_start_ts + 86400, end_ts)
+
+        graphql_query = '''
+            query GetReportPagination(
+                $category: Int!
+                $customReportName: String!
+                $uniqueId: String!
+                $start_ts: String!
+                $end_ts: String!
+                $clientLoginId: Int!
+                $timezone: String!
+            ) {
+                getReportPagination(
+                    category: $category
+                    customReportName: $customReportName
+                    uniqueId: $uniqueId
+                    start_ts: $start_ts
+                    end_ts: $end_ts
+                    clientLoginId: $clientLoginId
+                    timezone: $timezone
+                ) {
+                    categoryOneFields {
+                        dateTime location log9_voltage log9_current log9_soc
+                        log9_max_monomer_vol log9_max_vol_cell_no log9_min_monomer_vol
+                        log9_monomer_cell_voltage log9_min_vol_cell_no log9_max_monomer_temp
+                        log9_min_monomer_temp log9_charging_tube_status log9_discharging_tube_status
+                        log9_residual_capacity log9_charge_discharge_cycles log9_error
+                        can_raw_data altitude gpsDistance log9_speed log9_drive_mode
+                        log9_regen_flag log9_odomoter
+                    }
+                }
+            }
+        '''
+
+        variables = {
+            'category': 1,
+            'customReportName': 'Custom Report',
+            'uniqueId': uniqueId,
+            'start_ts': str(current_day_start_ts),
+            'end_ts': str(current_day_end_ts),
+            'clientLoginId': 6487,  # Example clientLoginId, adjust as needed
+            'timezone': 'Asia/Calcutta',
+        }
+
+        payload = {
+            'query': graphql_query,
+            'variables': variables
+        }
+
+        response = requests.post(graphql_api_url, json=payload, headers=headers)
+
+        if response.status_code == 200:
+            data = response.json()['data']['getReportPagination']['categoryOneFields']
+            all_data.extend(data)  # Append the day's data
+        else:
+            print(f"Failed to fetch data for day {day}. Status code: {response.status_code}")
+            print(response.text)
+
+    return all_data
     
+
+
+def GetCategoryOneReport(uniqueId, start_ts, end_ts):
+    graphql_api_url = 'https://log9-api.aquilatrack.com/graphql'
+
+    all_data = []  # List to accumulate data from each day
+
+    # Calculate the total number of days between start_ts and end_ts
+    total_days = (end_ts - start_ts) // 86400  # 86400 seconds in a day
+
+    for day in range(total_days + 1):
+        # Calculate start and end timestamps for the current day
+        current_day_start_ts = start_ts + day * 86400
+        current_day_end_ts = min(current_day_start_ts + 86400, end_ts)
+
+        graphql_query = '''
+            query GetCategoryOneReport(
+                $customReportName: String!
+                $uniqueId: String!
+                $start_ts: String!
+                $end_ts: String!
+                $clientLoginId: Int!
+                $timezone: String!
+            ) {
+                getCategoryOneReport(
+                    customReportName: $customReportName
+                    uniqueId: $uniqueId
+                    start_ts: $start_ts
+                    end_ts: $end_ts
+                    clientLoginId: $clientLoginId
+                    timezone: $timezone
+                ) {
+                    uniqueid dateTime location address cumDist speed altitude
+                }
+            }
+        '''
+
+        variables = {
+            'customReportName': 'Tracking Report',
+            'uniqueId': uniqueId,
+            'start_ts': str(current_day_start_ts),
+            'end_ts': str(current_day_end_ts),
+            'clientLoginId': 6487,  # Example clientLoginId, adjust as needed
+            'timezone': 'Asia/Calcutta',
+        }
+
+        payload = {
+            'query': graphql_query,
+            'variables': variables
+        }
+
+        response = requests.post(graphql_api_url, json=payload, headers=headers)
+
+        if response.status_code == 200:
+            data = response.json()['data']['getCategoryOneReport']
+            all_data.extend(data)  # Append the day's data
+        else:
+            print(f"Failed to fetch data for day {day}. Status code: {response.status_code}")
+            print(response.text)
+
+    return all_data
+
+
+
+# Function to map selected products to their corresponding values
+def get_product_values(product):
+    mapping = {
+        '12_KW_4W': {'drag_coefficient': 0.7, 'frontal_area': 3.6, 'weight': 1700, 'battery_capacity': 11.77},
+        '5.8 KW': {'drag_coefficient': 0.5, 'frontal_area': 3, 'weight': 1030, 'battery_capacity': 5.8},
+        '2 KW': {'drag_coefficient': 0.9, 'frontal_area': 0.6, 'weight': 286, 'battery_capacity': 2.0},
+        '7.7 KW': {'drag_coefficient': 0.5, 'frontal_area': 3, 'weight': 1200, 'battery_capacity': 7.7},
+    }
+    return mapping.get(product, {'drag_coefficient': np.nan, 'frontal_area': np.nan, 'weight': np.nan, 'battery_capacity': np.nan})
+
+
 def main():
     # if 'last_refresh' not in st.session_state:
     #     st.session_state['last_refresh'] = time.time()
     # # Check if the refresh interval has passed
-    # refresh_interval = 3600  # seconds (e.g., 300 seconds = 5 minutes)
+    # refresh_interval = 300  # seconds (e.g., 300 seconds = 5 minutes)
     # current_time = time.time()
     # if current_time - st.session_state['last_refresh'] > refresh_interval:
     #     st.session_state['last_refresh'] = current_time
     #     st.cache_data.clear()
     #     st.experimental_rerun()
         
-    df_main, df_tel,df_cohort = get_data()
-    df_mapping = get_mapping_data()
-    df = df_main  # Use df for data from calculated_main_telematics table
-    df2 = df_tel  # Use df2 for data from calculated_telematics_soc
-    df3 = df_cohort  # Use df3 for cohorting data
-    
+    df_main, df_tel = get_data()
+    df = df_main  # Use df for data from pulkit_main_telematics table
+    df2 = df_tel  # Use df2 for data from pulkit_telematics_table
+ 
     # Sidebar filters
     with st.sidebar:
         st.markdown("### Filters")
@@ -175,7 +266,7 @@ def main():
         min_date = df_main['date'].min()
         
         # Calculate the start date for the last 7 days range
-        start_date_last_7_days = max_date - pd.Timedelta(days=6)
+        start_date_last_7_days = max_date - pd.Timedelta(days=2)
         
         # Correcting the previous oversight:
         # Ensure the date_range variable correctly uses the last 7 days as the default value
@@ -186,25 +277,17 @@ def main():
             min_value=min_date,  # The earliest date a user can select
             max_value=max_date   # The latest date a user can select
         )
-        
-
         df_filtered = df_main
         df_filtered_tel = df_tel
-        df_filtered_cohort = df_cohort
-        df_filtered_mapping = df_mapping
         
         if len(date_range) == 2 and date_range[0] and date_range[1]:
                 # ... [your existing data filtering code]
                 df_filtered = df_filtered[(df_filtered['date'] >= pd.Timestamp(date_range[0])) & (df_filtered['date'] <= pd.Timestamp(date_range[1]))]
                 
                 df_filtered_tel['end_date'] = pd.to_datetime(df_filtered_tel['end_date'])
-                
-                df_filtered_cohort['date'] = pd.to_datetime(df_filtered_cohort['date'])
-            
-                df_filtered_tel = df_filtered_tel[(df_filtered_tel['end_date'] >= pd.Timestamp(date_range[0])) & (df_filtered_tel['end_date'] <= pd.Timestamp(date_range[1]))]
 
-                df_filtered_cohort = df_filtered_cohort[(df_filtered_cohort['date'] >= pd.Timestamp(date_range[0])) & (df_filtered_cohort['date'] <= pd.Timestamp(date_range[1]))]
-            
+                df_filtered_tel = df_filtered_tel[(df_filtered_tel['end_date'] >= pd.Timestamp(date_range[0])) & (df_filtered_tel['end_date'] <= pd.Timestamp(date_range[1]))]
+    
                 # Customer Name filter
                 partner_ids = df_filtered['partner_id'].dropna().unique().tolist()
                 selected_partner_ids = st.multiselect('Customer Name', partner_ids)
@@ -213,46 +296,16 @@ def main():
                 if selected_partner_ids:
                     df_filtered = df_filtered[df_filtered['partner_id'].isin(selected_partner_ids)]
                     df_filtered_tel = df_filtered_tel[df_filtered_tel['partner_id'].isin(selected_partner_ids)]
-                    df_filtered_cohort = df_filtered_cohort[df_filtered_cohort['partner_id'].isin(selected_partner_ids)]
-                    df_filtered_mapping = df_filtered_mapping[df_filtered_mapping['client_name'].isin(selected_partner_ids)]
-
     
                 # Product filter
                 products = df_filtered['product'].dropna().unique().tolist()
-                selected_products = st.multiselect('Product', products)
+                selected_products = st.selectbox('Product', [""] + products)
     
                 # Filter dataframe by product if selected
                 if selected_products:
-                    df_filtered = df_filtered[df_filtered['product'].isin(selected_products)]
-                    df_filtered_tel = df_filtered_tel[df_filtered_tel['product'].isin(selected_products)]
-                    df_filtered_cohort = df_filtered_cohort[df_filtered_cohort['product'].isin(selected_products)]
-                    df_filtered_mapping = df_filtered_mapping[df_filtered_mapping['battery_type'].isin(selected_products)]
-
+                    df_filtered = df_filtered[df_filtered['product'] == selected_products]
+                    df_filtered_tel = df_filtered_tel[df_filtered_tel['product'] == selected_products]
     
-                # Registration Number filter
-                reg_nos = df_filtered['reg_no'].dropna().unique().tolist()
-                selected_reg_nos = st.multiselect('Registration Number', reg_nos)
-    
-                # Filter dataframe by registration number if selected
-                if selected_reg_nos:
-                    df_filtered = df_filtered[df_filtered['reg_no'].isin(selected_reg_nos)]
-                    df_filtered_tel = df_filtered_tel[df_filtered_tel['reg_no'].isin(selected_reg_nos)]
-                    df_filtered_cohort = df_filtered_cohort[df_filtered_cohort['reg_no'].isin(selected_reg_nos)]
-                    df_filtered_mapping = df_filtered_mapping[df_filtered_mapping['reg_no'].isin(selected_reg_nos)]
-
-                
-                # Chassis Number filter
-                chassis_nos = df_filtered['chassis_number'].dropna().unique().tolist()
-                selected_chassis_nos = st.multiselect('Chassis Number', chassis_nos)
-    
-                # Filter dataframe by registration number if selected
-                if selected_chassis_nos:
-                    df_filtered = df_filtered[df_filtered['chassis_number'].isin(selected_chassis_nos)]
-                    df_filtered_tel = df_filtered_tel[df_filtered_tel['chassis_number'].isin(selected_chassis_nos)]
-                    df_filtered_cohort = df_filtered_cohort[df_filtered_cohort['chassis_number'].isin(selected_chassis_nos)]
-                    df_filtered_mapping = df_filtered_mapping[df_filtered_mapping['chassis_number'].isin(selected_chassis_nos)]
-
-
                 # City filter
                 cities = df_filtered['deployed_city'].dropna().unique().tolist()
                 selected_cities = st.multiselect('City', cities)
@@ -261,448 +314,633 @@ def main():
                 if selected_cities:
                     df_filtered = df_filtered[df_filtered['deployed_city'].isin(selected_cities)]
                     df_filtered_tel = df_filtered_tel[df_filtered_tel['deployed_city'].isin(selected_cities)]
-                    df_filtered_cohort = df_filtered_cohort[df_filtered_cohort['deployed_city'].isin(selected_cities)]
-                    df_filtered_mapping = df_filtered_mapping[df_filtered_mapping['location'].isin(selected_cities)]
+                       
+                reg_nos = df_filtered['reg_no'].dropna().unique().tolist()
+                selected_reg_nos = st.multiselect('Registration Number', reg_nos, default=[])
                 
-                # Update the duration slider based on filtered data
-                if not df_filtered.empty:
-                    min_km, max_km = df_filtered['total_km_travelled'].agg(['min', 'max'])
-                    min_km, max_km = int(min_km), int(max_km)
-                else:
-                    min_km, max_km = 0, 0  # Defaults when no data is available
+                # Enforce maximum selection limit of 5
+                max_selection = 5
+                if len(selected_reg_nos) > max_selection:
+                    st.warning(f'Please select no more than {max_selection} registration numbers.')
+                    selected_reg_nos = selected_reg_nos[:max_selection]  # Keep only the first 5 selections
                 
-                # Set the initial value of the slider to start at 10, or at the minimum value if it's higher than 10
-                initial_min_km = max(10, min_km)
-                
-                km_range = st.slider("Select daily distance travelled range(kms)", min_km, max_km, (initial_min_km, max_km))
-                
-                # Apply the duration filter
-                df_filtered = df_filtered[(df_filtered['total_km_travelled'] >= km_range[0]) & (df_filtered['total_km_travelled'] <= km_range[1])]
+                # Filter dataframe by registration number if any are selected
+                if selected_reg_nos:
+                    df_filtered = df_filtered[df_filtered['reg_no'].isin(selected_reg_nos)]
+                    df_filtered_tel = df_filtered_tel[df_filtered_tel['reg_no'].isin(selected_reg_nos)]
+        
+        
+        st.markdown("### Compare Vehicles")
+        run_button = st.button("Run")
 
         st.markdown("### Cache Management")
         if st.button("Clear Cache"):
             st.cache_data.clear()
             st.experimental_rerun()
-
-    
-    
-    # Layout: 3 columns
-    col1, col2, col3 = st.columns(3)
-
-    # Column 1 - Average Distance Travelled
-    with col1:
-        st.markdown("## Average Distance")
-
-        # Box plot data preparation
+        
+    if run_button:
         if not df_filtered.empty:
+            # Remove rows where telematics_number is None
+            df_filtered = df_filtered.dropna(subset=['telematics_number'])
             
-            grouped_distance = df_filtered.groupby('date')['total_km_travelled']
+            # Add "it_" prefix to telematics_number
+            df_filtered['uniqueId'] = 'it_' + df_filtered['telematics_number'].astype(str)
             
-            avg_dist_all_vehicles_per_day = df_filtered.groupby('date')['total_km_travelled'].mean().round(1).reset_index()
-            overall_avg_dist_per_day = avg_dist_all_vehicles_per_day['total_km_travelled'].mean().round(1)
+            # Group by  and reg_no and get unique combinations
+            unique_combinations = df_filtered[['uniqueId', 'reg_no']].dropna().drop_duplicates()
+
+            telematics_number = df_filtered['uniqueId']
+            start_date = date_range[0]
+            end_date = date_range[1]
             
-            st.metric(" ", f"{overall_avg_dist_per_day:.2f} km")
-            
-            boxplot_data = {
-                "xAxis": {
-                    "type": "category",
-                    "data": [],
-                    "axisLabel": {
-                        "rotate": 90,  # Rotating x-axis labels by 90 degrees
-                        "fontSize": 10
-                    }
-                },
-                "yAxis": {"type": "value"},
-                "tooltip": {
-                    "trigger": "item",
-                    "axisPointer": {"type": "shadow"}
-                },
-                "series": [{"name": "Distance Travelled", "type": "boxplot", "data": []}]
-            }
+            # Convert start_date and end_date to datetime.datetime objects
+            start_date = datetime.combine(start_date, datetime.min.time())
+            end_date = datetime.combine(end_date, datetime.max.time())
     
-            for name, group in grouped_distance:
-                percentiles = group.quantile([0.1, 0.25, 0.5, 0.75, 0.9]).round(1).tolist()
-                boxplot_data["xAxis"]["data"].append(name.strftime('%d-%m-%Y'))
-                boxplot_data["series"][0]["data"].append([
-                    percentiles[0], percentiles[1], percentiles[2], percentiles[3], percentiles[4]
-                ])
-    
-            st_echarts(options=boxplot_data, height="400px")
-        else:
-            st.write("Please select a date range and other filters to view analytics.")
         
-       
+        # st.markdown("## Vehicles")
+        # st.dataframe(unique_combinations, height=300)
+          
+        # Remove the "primary_id" column from df_filtered_tel
+        df_filtered_tel_without_primary_id = df_filtered_tel.drop(columns=['primary_id'])
         
-        # if 'df_filtered' in locals() and not df_filtered.empty:
-            
-        #     avg_dist_all_vehicles_per_day = df_filtered.groupby('date')['total_km_travelled'].mean().round(1).reset_index()
-        #     overall_avg_dist_per_day = avg_dist_all_vehicles_per_day['total_km_travelled'].mean().round(1)
-        #     st.metric(" ", f"{overall_avg_dist_per_day:.2f} km")
-
-        #     # Plotting the average distance travelled for all vehicles per day
-        #     options = {
-        #         "xAxis": {
-        #             "type": "category",
-        #             "data": avg_dist_all_vehicles_per_day['date'].dt.strftime('%d-%m-%Y').tolist(),
-        #             "axisLabel": {
-        #                 "rotate": 90,  # Rotating x-axis labels by 90 degrees
-        #                 "fontSize": 10  # Reducing font size
-        #             }
-        #         },
-        #         "yAxis": {
-        #             "type": "value"
-        #         },
-        #         "tooltip": {
-        #             "trigger": "axis",
-        #             "axisPointer": {
-        #                 "type": "cross"
-        #             }
-        #         },
-        #         "series": [{
-        #             "data": avg_dist_all_vehicles_per_day['total_km_travelled'].tolist(),
-        #             "type": "line"
-        #         }]
-        #     }
-        #     st_echarts(options=options, height="400px")
-
-
-        # else:
-        #     st.write("Please select a date range and other filters to view analytics.")
+        df_filtered_without_primary_id = df_filtered.drop(columns=['primary_id'])
         
-        st.markdown("## Charge SOC Over Time")
-        if 'df_filtered' in locals() and not df_filtered.empty:
-            # Group by date and calculate averages
-            charge_soc_data = df_filtered.groupby('date').agg({
-                'fast_charge_soc': 'mean',
-                'slow_charge_soc': 'mean'
-            }).round(1).reset_index()
+        # Display the "Day Wise Summary" DataFrame without the "primary_id" column
+        st.markdown("## Day Wise Summary")
+        st.dataframe(df_filtered_tel_without_primary_id, height=300)  
+        
 
-            # Prepare data for the stacked column chart
-            stacked_column_options = {
-                "tooltip": {
-                    "trigger": "axis",
-                    "axisPointer": {
-                        "type": "shadow"
-                    }
-                },
-                "xAxis": {
-                    "type": "category",
-                    "rotate": 90,
-                    "data": charge_soc_data['date'].dt.strftime('%d-%m-%Y').tolist()
-                },
-                "yAxis": {
-                    "type": "value"
-                },
-                "series": [
-                    {
-                        "name": "Fast Charge SOC",
-                        "type": "bar",
-                        "stack": "charging",
-                        "data": charge_soc_data['fast_charge_soc'].tolist()
-                    },
-                    {
-                        "name": "Slow Charge SOC",
-                        "type": "bar",
-                        "stack": "charging",
-                        "data": charge_soc_data['slow_charge_soc'].tolist()
-                    }
-                ]
-            }
-            st_echarts(options=stacked_column_options, height="400px")
-        else:
-            st.write("Please select a date range and other filters to view analytics.") 
-    # Column 2 - Average Range of the Fleet
-    with col2:
-        st.markdown("## Average Range")
-    
-        # Filter df_filtered for total_km_travelled > 15km
-        df_range = df_filtered[(df_filtered['total_km_travelled'] >= 0) & (df_filtered['total_discharge_soc'] < 0)]
+        # Ensure 'date' is in datetime format without time and convert to string
+        df_filtered_without_primary_id['date'] = pd.to_datetime(df_filtered_without_primary_id['date']).dt.date.astype(str)
+        
+        # Remove duplicate rows based on all columns
+        df_filtered_without_primary_id = df_filtered_without_primary_id.drop_duplicates()
+        
+        # Create the scatter plot chart
+        scatter = alt.Chart(df_filtered_without_primary_id).mark_point().encode(
+            x=alt.X('date:N', axis=alt.Axis(labelAngle=-90)),  # Treat 'date' as nominal and rotate x-axis labels
+            y=alt.Y('predicted_range:Q'),  # Quantitative scale for y-axis
+            color=alt.Color('reg_no:N', legend=alt.Legend(title="Registration Number")),  # Color by reg_no
+            tooltip=['date:N', 'predicted_range:Q', 'reg_no:N']  # Tooltip shows date, predicted_range, and reg_no
+        )
+        
+        # Create the text labels for data points
+        text = scatter.mark_text(
+            align='left',
+            baseline='middle',
+            dx=7,  # Nudge text to right so it doesn't overlap with points
+            dy=-10  # Nudge text up to avoid overlap with points below
+        ).encode(
+            text='predicted_range:Q',  # The field you want to display as text
+            color=alt.Color('reg_no:N', legend=None)  # Use the same color encoding but without legend for text
+        )
+        
+        # Combine scatter plot and text labels
+        chart = scatter + text
+        
+        # Set the properties for the combined chart
+        chart = chart.properties(width=600, height=500)
+        
+        # Display the scatter plot with data labels in Streamlit
+        st.altair_chart(chart, use_container_width=True)
+        
+        # # Create a bar chart
+        # bar_chart = alt.Chart(df_filtered_without_primary_id).mark_bar().encode(
+        #     x=alt.X('reg_no:N', sort=None),  # Use 'reg_no' for the X-axis
+        #     y=alt.Y('predicted_range:Q', axis=alt.Axis(title='Predicted Range')),  # Use 'predicted_range' for the Y-axis
+        #     color='reg_no:N',  # Color bars by 'reg_no' for distinction
+        #     column=alt.Column('date:N', header=alt.Header(title='Date')),  # Group bars by 'date'
+        #     tooltip=['date:N', 'reg_no:N', 'predicted_range:Q']  # Show these fields in tooltip
+        # )
+        # bar_chart = bar_chart.properties(width=300, height=500)
+        
+        # # Display the combined chart with data labels in Streamlit
+        # st.altair_chart(bar_chart, use_container_width=False)
+  
 
-        # Average Range of the Fleet Metric Calculation
-        avg_range_fleet = np.sum(df_range['total_km_travelled']) * -100 / np.sum(df_range['total_discharge_soc'])
-        st.metric(" ", f"{avg_range_fleet:.2f} km")
-    
-        # Box plot data preparation
-        if not df_range.empty:
-            grouped = df_range.groupby('date')['predicted_range']
-            boxplot_data = {
-                "xAxis": {
-                    "type": "category",
-                    "data": [],
-                    "axisLabel": {
-                        "rotate": 90,  # Rotating x-axis labels by 90 degrees
-                        "fontSize": 10
-                    }
-                },
-                "yAxis": {"type": "value"},
-                "tooltip": {
-                    "trigger": "item",
-                    "axisPointer": {"type": "shadow"}
-                },
-                "series": [{"name": "Predicted Range", "type": "boxplot", "data": []}]
-            }
-    
-            for name, group in grouped:
-                percentiles = group.quantile([0.1, 0.25, 0.5, 0.75, 0.9]).round(1).tolist()
-                boxplot_data["xAxis"]["data"].append(name.strftime('%d-%m-%Y'))
-                boxplot_data["series"][0]["data"].append([
-                    percentiles[0], percentiles[1], percentiles[2], percentiles[3], percentiles[4]
-                ])
-    
-            st_echarts(options=boxplot_data, height="400px")
-        else:
-            st.write("Please select a date range and other filters to view analytics.")
+        # Example DataFrame or list of uniqueIds
+        unique_ids = unique_combinations['uniqueId'].unique()  # Replace df with your actual DataFrame variable
+        
+        all_categoryOneData = []  # This will store the results for all uniqueIds
+        all_paginationData = []  # This will store the results for all uniqueIds
 
-        st.markdown("## Charging Metrics")
-        if 'df_filtered' in locals() and not df_filtered.empty:
-            avg_slow_charge_sessions = df_filtered['slow_charge_count'].mean()
-            avg_slow_charge_soc = df_filtered['slow_charge_soc'].mean()
-            avg_fast_charge_sessions = df_filtered['fast_charge_count'].mean()
-            avg_fast_charge_soc = df_filtered['fast_charge_soc'].mean()
+        start_ts = int(start_date.timestamp())
+        end_ts = int(end_date.timestamp())
+        
+        for uniqueId in unique_ids:
+            uniqueId_str = str(uniqueId)  # Ensure uniqueId is a string
             
-            st.metric("Average Slow Charge Sessions in a day", f"{avg_slow_charge_sessions:.2f}")
-            st.metric("Average Slow Charge SOC in a day", f"{avg_slow_charge_soc:.2f}")
-            st.metric("Average Fast Charge Sessions in a day", f"{avg_fast_charge_sessions:.2f}")
-            st.metric("Average Fast Charge SOC in a day", f"{avg_fast_charge_soc:.2f}")
-        else:
-            st.write("Please select a date range and other filters to view analytics.")
+            # Fetch data from the API for each uniqueId
+            try:
+                result_category_one = GetCategoryOneReport(uniqueId_str, start_ts, end_ts)
+                result_pagination = getReportPagination(uniqueId_str, start_ts, end_ts)
+                
+                # Convert the results to DataFrames
+                result_pagination_df = pd.DataFrame(result_pagination)
+                result_category_one_df = pd.DataFrame(result_category_one)
+                
+                # Add a column for uniqueId in each DataFrame
+                result_pagination_df['uniqueId'] = uniqueId_str
+                result_category_one_df['uniqueId'] = uniqueId_str
+                
+                # Append the DataFrame itself to the list, not the dictionary
+                all_paginationData.append(result_pagination_df)
+                all_categoryOneData.append(result_category_one_df)
+                
+            except Exception as e:
+                print(f"An error occurred while fetching data for {uniqueId_str}: {e}")
+        
+        df_pagination = pd.concat(all_paginationData, ignore_index=True)
+        df_categoryOne = pd.concat(all_categoryOneData, ignore_index=True)
+
+        # # Set ['uniqueId', 'dateTime'] as the index for df_pagination
+        # df_pagination.set_index(['uniqueId', 'dateTime'], inplace=True)
+        
+        # # Set ['uniqueId', 'dateTime'] as the index for df_categoryOne
+        # df_categoryOne.set_index(['uniqueId', 'dateTime'], inplace=True)
+        
+        df_pagination['dateTime'] = pd.to_numeric(df_pagination['dateTime'], errors='coerce')
+        df_categoryOne['dateTime'] = pd.to_numeric(df_categoryOne['dateTime'], errors='coerce')
+        
+        # Convert 'dateTime' from Unix timestamp to datetime in UTC
+        df_pagination['dateTime2'] = pd.to_datetime(df_pagination['dateTime'], unit='s')
+        df_categoryOne['dateTime2'] = pd.to_datetime(df_categoryOne['dateTime'], unit='s')
+        
+        # Extract just the date part into a new column
+        df_pagination['date'] = df_pagination['dateTime2'].dt.date
+        df_categoryOne['date'] = df_categoryOne['dateTime2'].dt.date
+
+        # Define the desired column order for df_pagination
+        pagination_columns_order = [
+            'uniqueId', 'dateTime', 'dateTime2', 'date', 'location', 'log9_voltage',
+            'log9_current', 'log9_soc', 'log9_max_monomer_vol', 'log9_max_vol_cell_no',
+            'log9_min_monomer_vol', 'log9_monomer_cell_voltage', 'log9_min_vol_cell_no',
+            'log9_max_monomer_temp', 'log9_min_monomer_temp', 'log9_charging_tube_status',
+            'log9_discharging_tube_status', 'log9_residual_capacity', 'log9_charge_discharge_cycles',
+            'log9_error', 'can_raw_data', 'altitude', 'gpsDistance'
+        ]
+        
+        # Reorder the columns in df_pagination
+        df_pagination = df_pagination.reindex(columns=pagination_columns_order)
+        # st.markdown("## Custom Report Data")
+        # st.dataframe(df_pagination, height=300)
+
+        # Reset index if 'uniqueId' and 'dateTime' are indexes
+        df_categoryOne = df_categoryOne.reset_index()
+        df_pagination = df_pagination.reset_index()
+
+        # Define the columns to be merged from df_pagination to df_categoryOne
+        columns_to_merge = [
+            'uniqueId',
+            'dateTime',
+            'log9_voltage', 
+            'log9_current', 
+            'log9_soc', 
+            'log9_monomer_cell_voltage',
+            'log9_max_monomer_vol', 
+            'log9_max_vol_cell_no', 
+            'log9_min_monomer_vol', 
+            'log9_min_vol_cell_no'
+        ]
+        
+        # Perform the left join
+        df_categoryOne = pd.merge(
+            df_categoryOne,
+            df_pagination[columns_to_merge],
+            how='left',
+            on=['uniqueId', 'dateTime']
+        )
+        
+        # Define the columns to be merged from df_pagination to df_categoryOne
+        columns_to_merge = [
+            'uniqueId',
+            'reg_no',
+        ]
+        
+        # Perform the left join
+        df_categoryOne = pd.merge(
+            df_categoryOne,
+            unique_combinations[columns_to_merge],
+            how='left',
+            on=['uniqueId']
+        )
+        
+        # Define the desired column order for df_categoryOne
+        categoryOne_columns_order = [
+            'uniqueId','reg_no', 'dateTime', 'dateTime2', 'date', 'location', 'address',
+            'cumDist', 'speed', 'altitude', 'log9_voltage', 'log9_current','log9_soc','log9_monomer_cell_voltage', 
+            'log9_max_monomer_vol', 'log9_max_vol_cell_no', 'log9_min_monomer_vol', 
+            'log9_min_vol_cell_no'
+        ]
+        
+        # Reorder the columns in df_categoryOne
+        df_categoryOne = df_categoryOne.reindex(columns=categoryOne_columns_order)
+        # st.markdown("## Tracking Data")
+        # st.dataframe(df_categoryOne, height=300)
+
+        # df_categoryOne.set_index(['uniqueId', 'dateTime'], inplace=True)
+
+        df_all_processed = pd.DataFrame()
+
+        for unique_id in df_categoryOne['uniqueId'].unique():
+            df_sub = df_categoryOne[df_categoryOne['uniqueId'] == unique_id].copy()
+
+            # Sort the dataframe by 'dateTime' in ascending order
+            df_sub = df_sub.sort_values(by='dateTime')
+            
+            # Now you can calculate the difference in seconds (delta_time) between each row and the previous row
+            df_sub['delta_time'] = df_sub['dateTime2'].diff().dt.total_seconds().fillna(0)
+            df_sub['delta_time'].iloc[0] = 60
+            
+            # Calculate acceleration
+            df_sub['acceleration'] = np.where(
+                (df_sub['delta_time'] < 60) ,
+                (df_sub['speed'].diff() / 3.6) / df_sub['delta_time'],
+                0
+            )
+            df_sub['acceleration'].iloc[0] = 0  # Set the first row's acceleration to 0
+            
+            # Calculate the differences needed for the elevation calculation
+            df_sub['cumDist_diff'] = df_sub['cumDist'].diff()
+            df_sub['altitude_diff'] = df_sub['altitude'].diff()
+            
+            # Calculate elevation in radians first based on the given conditions
+            df_sub['elevation_radians'] = np.where(
+                (df_sub['delta_time'] < 60) & 
+                (df_sub['cumDist_diff'] > 0) ,
+                np.arctan(df_sub['altitude_diff'] / (df_sub['cumDist_diff'] * 1000)),
+                0
+            )
+            df_sub['cumDist_diff'].iloc[0] = 0  # Set the first row's to 0
+            df_sub['altitude_diff'].iloc[0] = 0  # Set the first row's to 0
+            
+            # Convert elevation from radians to degrees
+            df_sub['elevation_degrees'] = np.degrees(df_sub['elevation_radians'])
+            
+            # Drop the intermediate calculation columns if they are no longer needed
+            df_sub.drop(columns=['cumDist_diff', 'altitude_diff'], inplace=True)
+            
+            # Ensure the first row's elevation is set correctly if necessary
+            df_sub['elevation_degrees'].iloc[0] = 0  # Assuming you want to reset the first row's elevation to 0
+            
+            # Calculate sin(theta) and cos(theta) directly from the elevation angle in radians
+            df_sub['sin_theta'] = np.sin(df_sub['elevation_radians'])
+            df_sub['cos_theta'] = np.cos(df_sub['elevation_radians'])
     
-    with col3:
-        st.markdown("## Distance travelled, Range and Runtime")
+    
+            selected_product = selected_products  # Replace with the actual selected product from the Streamlit selectbox
+            product_values = get_product_values(selected_product)
             
-        # Filter df_filtered for total_km_travelled >= 0 and total_discharge_soc < 0
-        df_range = df_filtered[(df_filtered['total_km_travelled'] >= 0)]
+            # Add the product-specific values to the dataframe
+            df_sub['drag_coefficient'] = product_values['drag_coefficient']
+            df_sub['frontal_area'] = product_values['frontal_area']
+            df_sub['weight'] = product_values['weight']
+            battery_capacity = product_values['battery_capacity']
+                    
+            # Coefficients and other constants
+            stationary_coefficient_of_friction = 0.013
+            air_density = 1.20
+            g = 9.8  # Acceleration due to gravity in m/s^2
+            efficiency = 0.80  # Efficiency factor
             
-        if not df_range.empty:
-            # Define invalid values for each column
-            invalid_reg_no_values = [None, np.nan, "NA", "0", "FALSE", "NULL","false","False"]
-            invalid_telematics_values = [None, np.nan, "111111111111111", "FALSE", "11111111111111", "A","false","False"]
+            # Calculate rolling_coefficient_of_friction
+            df_sub['rolling_coefficient_of_friction'] = stationary_coefficient_of_friction * (1 + (df_sub['speed'] / 3.6) / 100)
+    
+            # Calculating force of rolling resistance
+            df_sub['force_rolling_resistance'] = df_sub['weight'] * g * df_sub['rolling_coefficient_of_friction'] * df_sub['cos_theta']
+    
+            # Calculating force of elevation
+            df_sub['force_elevation'] = df_sub['weight'] * g * df_sub['sin_theta']
             
-            # Fill missing or invalid values with placeholders
-            df_range['chassis_number'] = replace_invalid_values(df_range['chassis_number'], 'Unknown Chassis', [None, np.nan, False, 0, '0'])
-            df_range['reg_no'] = replace_invalid_values(df_range['reg_no'], 'Unknown Reg', invalid_reg_no_values)
-            df_range['telematics_number'] = replace_invalid_values(df_range['telematics_number'], 'Unknown Telematics', invalid_telematics_values)
+            # Calculating force of drag
+            df_sub['force_drag'] = 0.5 * air_density * df_sub['drag_coefficient'] * df_sub['frontal_area'] * ((df_sub['speed'] / 3.6) ** 2)
             
-            # Group by reg_no, chassis_number, and telematics_number, and calculate the sum of total_km_travelled, total_discharge_soc, and total_runtime_minutes
-            df_grouped = df_range.groupby(['chassis_number', 'reg_no', 'telematics_number'], dropna=False).agg(
-                total_km_travelled_sum=('total_km_travelled', 'sum'),
-                total_discharge_soc_sum=('total_discharge_soc', 'sum'),
-                total_runtime_minutes_sum=('total_runtime_minutes', 'sum')
-            ).reset_index()
+            # Calculating force of acceleration
+            df_sub['force_acceleration'] = df_sub['weight'] * df_sub['acceleration']
             
-            # Calculate Range
-            df_grouped['Range'] = df_grouped['total_km_travelled_sum'] * (-100) / df_grouped['total_discharge_soc_sum']
+            # Calculating total force of traction
+            df_sub['force_traction'] = df_sub['force_acceleration'] + df_sub['force_drag'] + df_sub['force_rolling_resistance'] + df_sub['force_elevation']
             
-            # Calculate Average Run Time
-            avg_run_time = df_range['total_runtime_minutes'].median()
-            st.markdown(f"#### Average Run Time: {avg_run_time:.2f} minutes")
-            
-            # Calculate Average Run Time Per Day for each group
-            avg_run_time_per_day = df_range.groupby(['chassis_number', 'reg_no', 'telematics_number'], dropna=False)['total_runtime_minutes'].median().reset_index(name='avg_run_time_per_day')
-            df_grouped = df_grouped.merge(avg_run_time_per_day, on=['chassis_number', 'reg_no', 'telematics_number'])
-            
-            # Replace placeholders with actual missing value representations
-            df_grouped['chassis_number'].replace('Unknown Chassis', None, inplace=True)
-            df_grouped['reg_no'].replace('Unknown Reg', None, inplace=True)
-            df_grouped['telematics_number'].replace('Unknown Telematics', None, inplace=True)
-            
-            # Format the DataFrame to match the screenshot layout
-            df_display = df_grouped[['chassis_number', 'reg_no', 'telematics_number', 'total_km_travelled_sum', 'total_runtime_minutes_sum', 'avg_run_time_per_day', 'Range']].rename(
-                columns={
-                    'chassis_number': 'Chassis Number',
-                    'reg_no': 'Registration Number', 
-                    'telematics_number': 'Telematics Number',
-                    'total_km_travelled_sum': 'Total KM Travelled',
-                    'total_runtime_minutes_sum': 'Total Runtime Minutes',
-                    'avg_run_time_per_day': 'Average Run Time Per Day'
-                }
+            # Calculating power of traction
+            df_sub['power_traction'] = np.where(
+                ((df_sub['delta_time'] < 60) ),
+                (df_sub['force_traction'] * (df_sub['speed'] / 3.6)) / efficiency,
+                0
             )
             
-            st.dataframe(df_display, height=400)
-        # if not df_range.empty:
-        #     # Group by reg_no and calculate the sum of total_km_travelled and the Range
-        #     df_grouped = df_range.groupby('reg_no').agg(
-        #         total_km_travelled_sum=('total_km_travelled', 'sum'),
-        #         total_discharge_soc_sum=('total_discharge_soc', 'sum')
-        #     ).reset_index()
-        #     df_grouped['Range'] = df_grouped['total_km_travelled_sum'] * (-100) / df_grouped['total_discharge_soc_sum']
-
-        #     # Format the DataFrame to match the screenshot layout
-        #     df_display = df_grouped[['reg_no', 'total_km_travelled_sum', 'Range']].rename(
-        #         columns={'reg_no': 'Registration Number', 'total_km_travelled_sum': 'Total KM Travelled'}
-        #     )
-            
-
-            
-        #     st.dataframe(df_display,height=400)
-            
-        st.markdown("## Vehicle level Average Slow and Fast Charge SOC")
-
-        # Calculate the average slow_charge_soc and average fast_charge_soc grouped by reg_no
-        df_charging = df_filtered.groupby('reg_no').agg(
-            average_slow_charge_soc=('slow_charge_soc', 'mean'),
-            average_fast_charge_soc=('fast_charge_soc', 'mean')
-        ).reset_index().round(1)  # Round to 1 decimal place
-
-        # Rename columns for display
-        df_charging.rename(columns={
-            'reg_no': 'Registration Number',
-            'average_slow_charge_soc': 'Average Slow Charge SOC',
-            'average_fast_charge_soc': 'Average Fast Charge SOC'
-        }, inplace=True)
-
-        # Display the DataFrame
-        st.dataframe(df_charging, height=300)     
-        
-    df_charging_locations = df_filtered_tel[(df_filtered_tel['change_in_soc'] > 0) & (df_filtered_tel['soc_type'] == "Charging")]
-
-
-    # if not df_charging_locations.empty:
-    #     # Check if the necessary columns exist
-    #     required_columns = ['charging_location', 'charging_location_coordinates', 'change_in_soc', 'soc_type']
-    #     missing_columns = [col for col in required_columns if col not in df_charging_locations.columns]
-
-    #     if missing_columns:
-    #         st.write(f"Missing columns in df_charging_locations: {', '.join(missing_columns)}")
-    #         return
-
-    #     # Create a DataFrame with charging_location, charging_location_coordinates, and count of Charging soc_type
-    #     df_map_data = df_charging_locations.groupby(['charging_location', 'charging_location_coordinates']).agg({
-    #         'change_in_soc': 'sum',  # Calculate the sum of total_charge_soc
-    #         'soc_type': 'size'  # Count the number of soc_type
-    #     }).reset_index()
-
-    #     # Extract latitude and longitude from charging_location_coordinates
-    #     df_map_data[['latitude', 'longitude']] = df_map_data['charging_location_coordinates'].str.split(',', expand=True).astype(float)
-
-    #     # Define the color scale for the bars based on total_charge_soc
-    #     color_range = [0, df_map_data['change_in_soc'].max()]  # Adjust as needed
-
-    #     # Create a custom hover text for data points
-    #     df_map_data['hover_text'] = df_map_data.apply(
-    #         lambda row: f"Location: {row['charging_location']}<br>"
-    #                     f"Total Charge SOC: {row['change_in_soc']}<br>"
-    #                     f"SOC Type Count: {row['soc_type']}",
-    #         axis=1
-    #     )
-
-    #     # Create a scatter map using Plotly Express with Mapbox
-    #     fig = px.scatter_mapbox(
-    #         df_map_data,
-    #         lat="latitude",
-    #         lon="longitude",
-    #         color="change_in_soc",
-    #         size="soc_type",
-    #         color_continuous_scale="YlOrRd",  # You can choose a different color scale
-    #         size_max=15,  # Adjust the max size of data points
-    #         zoom=10,  # Adjust the initial zoom level
-    #         hover_name="charging_location",
-    #         hover_data=["change_in_soc", "soc_type", "hover_text"],
-    #     )
-
-    #     # Customize the map layout
-    #     fig.update_layout(
-    #         mapbox_style="streets",  # You can choose different Mapbox styles
-    #         margin={"r": 0, "t": 0, "l": 0, "b": 0},  # Remove margin
-    #         template="plotly_dark"
-    #     )
-
-    #     # Display the map
-    #     st.plotly_chart(fig, use_container_width=True)
-    # else:
-    #     st.write("No charging locations found.")
-
     
+          
+            # Calculating energy of traction
+            df_sub['energy_traction'] = np.where(
+                ((df_sub['delta_time'] < 60) ),
+                df_sub['power_traction'] * (df_sub['delta_time'] / 3600),
+                0
+            )
+             
+            
+            # Calculating energy of rolling resistance
+            df_sub['energy_rolling_resistance'] = np.where(
+                ((df_sub['delta_time'] < 60) ),
+                (df_sub['force_rolling_resistance'] * (df_sub['speed'] / 3.6)) / efficiency,
+                0
+            ) * (df_sub['delta_time'] / 3600)
+    
+            # Calculating energy of rolling resistance
+            df_sub['energy_elevation'] = np.where(
+                ((df_sub['delta_time'] < 60) ),
+                (df_sub['force_elevation'] * (df_sub['speed'] / 3.6)) / efficiency,
+                0
+            ) * (df_sub['delta_time'] / 3600)
+            
+            # Calculating energy of aero drag
+            df_sub['energy_aero_drag'] = np.where(
+                ((df_sub['delta_time'] < 60) ),
+                (df_sub['force_drag'] * (df_sub['speed'] / 3.6)) / efficiency,
+                0
+            ) * (df_sub['delta_time'] / 3600)
+            
+            # Calculating energy of acceleration
+            df_sub['energy_acceleration'] = np.where(
+                ((df_sub['delta_time'] < 60) ),
+                (df_sub['force_acceleration'] * (df_sub['speed'] / 3.6)) / efficiency,
+                0
+            ) * (df_sub['delta_time'] / 3600)
+            
+            # Calculating energy from the battery
+            df_sub['energy_actual'] = np.where(
+                ((df_sub['delta_time'] < 60) ),
+                (df_sub['log9_current'] * df_sub['log9_voltage'] * -1) * (df_sub['delta_time'] / 3600),
+                0
+            )
+    
+            # Calculating regenerative energy from the battery
+            df_sub['regen_energy_from_battery'] = np.where(
+                ((df_sub['log9_current'] > 0) & (df_sub['delta_time'] < 60)),
+                (df_sub['log9_current'] * df_sub['log9_voltage'] * -1) * (df_sub['delta_time'] / 3600),
+                0
+            )
+    
+            # Calculating energy of traction
+            df_sub['energy_calculated'] =  df_sub['energy_traction'] + df_sub['regen_energy_from_battery']
+            
+            df_all_processed = pd.concat([df_all_processed, df_sub])
+            
+        # Calculate max and min cumDist for each uniqueId and date
+        grouped = df_all_processed.groupby(['uniqueId', 'reg_no', 'date'])['cumDist'].agg([max, min])
+        
+        st.markdown("## Tracking Data")
+        st.dataframe(df_all_processed, height=300)
+        
+        # Calculate km_travelled
+        grouped['km_travelled'] = grouped['max'] - grouped['min']
+        
+        # Reset index to make 'uniqueId', 'reg_no', and 'date' columns again
+        km_travelled = grouped.reset_index()[['uniqueId', 'reg_no', 'date', 'km_travelled']]
 
-
-    if not df_filtered_cohort.empty:                
-        st.markdown("## Distance Travelled distribution ")
-        # Create a pivot table
-        pivot_table = df_filtered_cohort.pivot_table(
-            index='distance_bucket',  # Rows (index) will be the different distance buckets
-            columns='date',           # Columns will be the dates
-            values='vehicle_number',  # Values will be the count of vehicle numbers
-            aggfunc='count',          # We count the number of vehicle numbers for each (row, column) pair
-            fill_value=0              # Fill missing values with 0
+        # Create the pivot table with sum of energy columns
+        pivot_table = df_all_processed.pivot_table(
+            index=['reg_no', 'date'],
+            values=['energy_traction','energy_calculated', 'energy_rolling_resistance', 'energy_acceleration', 'energy_aero_drag', 'energy_elevation' , 'energy_actual','regen_energy_from_battery'],
+            aggfunc='sum'
         )
-        pivot_table.columns = pivot_table.columns.strftime('%d-%m-%Y')
         
-        # Convert the cell values to percentage of row totals
-        pivot_table_percentage = pivot_table.div(pivot_table.sum(axis=0), axis='columns') * 100
+        # Reset the index to merge with predicted_range data
+        pivot_table.reset_index(inplace=True)
         
-        # Format the numbers in the pivot table to show as percentages with 1 decimal place and append "%"
-        formatted_pivot_table_percentage = pivot_table_percentage.style.format("{:.1f}%")
+        # Now, get the predicted_range from df_filtered_without_primary_id
+        # Make sure the date column is properly formatted as date
+        df_filtered_without_primary_id['date'] = pd.to_datetime(df_filtered_without_primary_id['date']).dt.date
         
-        # Now, display the formatted pivot table in Streamlit
-        st.table(formatted_pivot_table_percentage)
+        # Drop duplicates based on both 'reg_no' and 'date' columns to ensure a one-to-one merge
+        df_filtered_without_primary_id = df_filtered_without_primary_id.drop_duplicates(subset=['reg_no', 'date'])
+        
+        # Make sure to include 'total_km_travelled' in the merge and now include 'reg_no' in the merge keys
+        pivot_table = pd.merge(
+            pivot_table,
+            km_travelled[['reg_no', 'date', 'km_travelled']],
+            on=['reg_no', 'date'],  # Include 'reg_no' here
+            how='left'
+        )
+        
+        # Normalize energy columns by 'total_km_travelled' for each row
+        for column in ['energy_traction','energy_calculated', 'energy_rolling_resistance', 'energy_elevation', 'energy_acceleration', 'energy_aero_drag','energy_actual','regen_energy_from_battery']:
+            pivot_table[column] = pivot_table[column] / pivot_table['km_travelled']
+        
+        # You might want to handle or replace infinite values or NaNs that result from division by zero
+        pivot_table.replace([np.inf, -np.inf], np.nan, inplace=True)
+        
+        # Remove rows where 'predicted_range' is NaN
+        pivot_table.dropna(subset=['km_travelled'], inplace=True)
 
-    else:
-        st.write("Please select a date range and other filters to view analytics.")
+        # Identify rows where 'km_travelled' is None or less than 2
+        mask = pivot_table['km_travelled'].isna() | (pivot_table['km_travelled'] < 15)
         
+        # For rows matching the condition, set specified columns to None
+        columns_to_set_none = ['km_travelled','energy_traction', 'energy_calculated', 'energy_rolling_resistance', 'energy_acceleration', 'energy_aero_drag', 'energy_elevation', 'energy_actual', 'regen_energy_from_battery', 'predicted_range']
+        pivot_table.loc[mask, columns_to_set_none] = None
 
-    # else:
-    #     st.write("Please select a date range and other filters to view analytics.")
+        # Check if 'energy_actual' is not zero to avoid division by zero
+        pivot_table['predicted_range'] = np.where(
+            pivot_table['energy_actual'] != 0,
+            battery_capacity * 1000 * 0.95 / pivot_table['energy_actual'],
+            np.nan  # Use NaN or an appropriate value for cases where energy_actual is 0
+        )
+        
+        # You might want to handle or replace infinite values or NaNs that result from division by zero
+        pivot_table.replace([np.inf, -np.inf], np.nan, inplace=True)
+        
+        # Optionally, round the 'predicted_range' to 1 decimal place
+        pivot_table['predicted_range'] = pivot_table['predicted_range'].round(1)
+        
+        pivot_table = pivot_table.round(1)
+        
+        columns_order = [
+            'reg_no',
+            'date',
+            'predicted_range',
+            'km_travelled',
+            'energy_actual',
+            'energy_calculated',
+            'energy_traction',
+            'regen_energy_from_battery',
+            'energy_rolling_resistance',
+            'energy_elevation',
+            'energy_acceleration',
+            'energy_aero_drag'
+        ]
+
+        # Reorder the columns in the pivot table
+        pivot_table = pivot_table[columns_order]
+        
+        # Display the normalized pivot table in the Streamlit app with reordered columns
+        st.markdown("## Wh/km distribution")
+        st.dataframe(pivot_table)
+
+
+
+        # Initialize the boxplot data structure with x-axis and y-axis configurations
+        boxplot_data = {
+            "xAxis": {
+                "type": "category",
+                "data": [],
+                "axisLabel": {
+                    "rotate": 90,  # Rotating x-axis labels by 90 degrees
+                    "fontSize": 10
+                }
+            },
+            "yAxis": {"type": "value"},
+            "tooltip": {
+                "trigger": "item",
+                "axisPointer": {"type": "shadow"}
+            },
+            "series": []  # This will be filled with one series per reg_no
+        }
+        
+        # Find unique reg_nos
+        unique_reg_nos = df_all_processed['reg_no'].unique()
+        
+        # Create a boxplot series for each reg_no
+        for reg_no in unique_reg_nos:
+            reg_no_data = df_all_processed[(df_all_processed['reg_no'] == reg_no) & (df_all_processed['delta_time'] <= 10) & (df_all_processed['speed'] > 0) ]
+            grouped = reg_no_data.groupby('date')['force_acceleration']
+            
+            # Initialize series data for this reg_no 
+            series_data_acceleration = {
+                "name": f"Acceleration force (N) {reg_no}",
+                "type": "boxplot",
+                "data": []
+            }
+            
+            for name, group in grouped:
+                # Calculate the desired percentiles
+                percentiles = group.quantile([0.1, 0.25, 0.5, 0.75, 0.9]).round(3).tolist()
+                # Add the date to the xAxis if it's not already present
+                if name.strftime('%d-%m-%Y') not in boxplot_data["xAxis"]["data"]:
+                    boxplot_data["xAxis"]["data"].append(name.strftime('%d-%m-%Y'))
+                # Append the percentile data to this series
+                series_data_acceleration["data"].append([
+                    percentiles[0], percentiles[1], percentiles[2], percentiles[3], percentiles[4]
+                ])
+            # Add the series for this reg_no to the main boxplot data
+            boxplot_data["series"].append(series_data_acceleration)
+        
+        # Set the height dynamically based on the number of reg_nos
+        chart_height = max(400, 100 * len(unique_reg_nos))
+        
+        # Render the boxplot using eCharts
+        st.markdown("## Acceleration Force box plot")
+        st_echarts(options=boxplot_data, height=f"{chart_height}px")
+        
+        # Initialize the boxplot data structure with x-axis and y-axis configurations
+        boxplot_data = {
+            "xAxis": {
+                "type": "category",
+                "data": [],
+                "axisLabel": {
+                    "rotate": 90,  # Rotating x-axis labels by 90 degrees
+                    "fontSize": 10
+                }
+            },
+            "yAxis": {"type": "value"},
+            "tooltip": {
+                "trigger": "item",
+                "axisPointer": {"type": "shadow"}
+            },
+            "series": []  # This will be filled with one series per reg_no
+        }
+        
+        # Find unique reg_nos
+        unique_reg_nos = df_all_processed['reg_no'].unique()
+        
+        # Create a boxplot series for each reg_no
+        for reg_no in unique_reg_nos:
+            reg_no_data = df_all_processed[(df_all_processed['reg_no'] == reg_no) & (df_all_processed['delta_time'] <= 10) & (df_all_processed['speed'] > 0) ]
+            grouped = reg_no_data.groupby('date')['speed']
+            
+            # Initialize series data for this reg_no 
+            series_data_speed = {
+                "name": f"Speed (km/hr) {reg_no}",
+                "type": "boxplot",
+                "data": []
+            }
+            
+            for name, group in grouped:
+                # Calculate the desired percentiles
+                percentiles = group.quantile([0.1, 0.25, 0.5, 0.75, 0.9]).round(3).tolist()
+                # Add the date to the xAxis if it's not already present
+                if name.strftime('%d-%m-%Y') not in boxplot_data["xAxis"]["data"]:
+                    boxplot_data["xAxis"]["data"].append(name.strftime('%d-%m-%Y'))
+                # Append the percentile data to this series
+                series_data_speed["data"].append([
+                    percentiles[0], percentiles[1], percentiles[2], percentiles[3], percentiles[4]
+                ])
+            # Add the series for this reg_no to the main boxplot data
+            boxplot_data["series"].append(series_data_acceleration)
+        
+        # Set the height dynamically based on the number of reg_nos
+        chart_height = max(400, 100 * len(unique_reg_nos))
+        
+        # Render the boxplot using eCharts
+        st.markdown("## Speed kmph box plot")
+        st_echarts(options=boxplot_data, height=f"{chart_height}px")
+        
+        # Initialize the boxplot data structure with x-axis and y-axis configurations
+        boxplot_data = {
+            "xAxis": {
+                "type": "category",
+                "data": [],
+                "axisLabel": {
+                    "rotate": 90,  # Rotating x-axis labels by 90 degrees
+                    "fontSize": 10
+                }
+            },
+            "yAxis": {"type": "value"},
+            "tooltip": {
+                "trigger": "item",
+                "axisPointer": {"type": "shadow"}
+            },
+            "series": []  # This will be filled with one series per reg_no
+        }
+        
+        # Find unique reg_nos
+        unique_reg_nos = df_all_processed['reg_no'].unique()
+        
+        # Create a boxplot series for each reg_no
+        for reg_no in unique_reg_nos:
+            reg_no_data = df_all_processed[(df_all_processed['reg_no'] == reg_no) & (df_all_processed['delta_time'] <= 10) & (df_all_processed['log9_current'] < 0) ]
+            grouped = reg_no_data.groupby('date')['log9_current']
+            
+            # Initialize series data for this reg_no 
+            series_data_acceleration = {
+                "name": f"Current (A) {reg_no}",
+                "type": "boxplot",
+                "data": []
+            }
+            
+            for name, group in grouped:
+                # Calculate the desired percentiles
+                percentiles = group.quantile([0.1, 0.25, 0.5, 0.75, 0.9]).round(3).tolist()
+                # Add the date to the xAxis if it's not already present
+                if name.strftime('%d-%m-%Y') not in boxplot_data["xAxis"]["data"]:
+                    boxplot_data["xAxis"]["data"].append(name.strftime('%d-%m-%Y'))
+                # Append the percentile data to this series
+                series_data_acceleration["data"].append([
+                    percentiles[0], percentiles[1], percentiles[2], percentiles[3], percentiles[4]
+                ])
+            # Add the series for this reg_no to the main boxplot data
+            boxplot_data["series"].append(series_data_acceleration)
+        
+        # Set the height dynamically based on the number of reg_nos
+        chart_height = max(400, 100 * len(unique_reg_nos))
+        
+        # Render the boxplot using eCharts
+        st.markdown("## Discharge Current box plot")
+        st_echarts(options=boxplot_data, height=f"{chart_height}px")
+
     
-    if not df_filtered.empty:
-        st.markdown("## Day Wise Data")
-        st.dataframe(df_filtered, height=300)
-        
-        # # PyGWalker integration for df_filtered
-        # st.markdown("## Explore Day Wise Data")
-        # pyg.walk(df_filtered, "Day Wise Data Exploration")
     else:
-        st.write("df_filtered is empty")
-        
-    if not df_filtered_tel.empty:
-        st.markdown("## SOC Data")
-        st.dataframe(df_filtered_tel, height=300)
-        
-        # # PyGWalker integration for df_filtered_tel
-        # st.markdown("## Explore SOC Data")
-        # pyg.walk(df_filtered_tel, "SOC Data Exploration")
-    else:
-        st.write("df_filtered_tel is empty")
-
-    # Define invalid values for each column
-    invalid_reg_no_values = [None, np.nan, "NA", "0", "FALSE", "NULL"]
-    invalid_telematics_values = [None, np.nan, "111111111111111", "FALSE", "11111111111111", "A"]
-
-    # Fill missing or invalid values with placeholders
-    df_filtered_mapping['chassis_number'] = replace_invalid_values(df_filtered_mapping['chassis_number'], 'Unknown Chassis', [None, np.nan, False, 0, '0'])
-    df_filtered_mapping['reg_no'] = replace_invalid_values(df_filtered_mapping['reg_no'], 'Unknown Reg', invalid_reg_no_values)
-    df_filtered_mapping['telematics_number'] = replace_invalid_values(df_filtered_mapping['telematics_number'], 'Unknown Telematics', invalid_telematics_values)
-
-    # Add row numbers
-    df_filtered_mapping.reset_index(drop=True, inplace=True)
-    df_filtered_mapping['Row Number'] = df_filtered_mapping.index + 1
-
-    # Display the "List of Assets" DataFrame
-    if not df_filtered_mapping.empty:
-        st.markdown("## List of Assets")
-        st.dataframe(df_filtered_mapping[['Row Number', 'chassis_number', 'reg_no', 'telematics_number', 'location', 'client_name', 'battery_type']], height=300)
-    else:
-        st.write("No assets found for the selected filters.")
-
-    
-    # Display the filtered dataframe below the charts
-    # if not df_filtered_tel.empty:
-    #     st.markdown("## Cohorting Data")
-    #     st.dataframe(df_filtered_cohort, height=300)
-
-    # df_filtered_tel['energy_consumption'] = df_filtered_tel.apply(
-    #     lambda row: round((11.77 * 1000 * (row['change_in_soc'] / -100)) / row['total_distance_km'], 2) 
-    #     if (row['product'] == "12_KW_4W" and row['soc_type'] == "Discharging" and row['total_distance_km'] != 0)
-    #     else row['energy_consumption'],
-    #     axis=1
-    # )
-    
-    # # Remove the "primary_id" column from df_filtered_tel
-    # df_filtered_tel_without_primary_id = df_filtered_tel.drop(columns=['primary_id'])
-
-    # # Display the "Day Wise Summary" DataFrame without the "primary_id" column
-    # st.markdown("## Day Wise Summary")
-    # st.dataframe(df_filtered_tel_without_primary_id, height=300)
-        
+        st.write("Please select filters and click run")
 
 
 if __name__ == "__main__":
