@@ -13,3 +13,4 @@ requests
 datetime 
 pygwalker
 clickhouse_connect
+haversine
