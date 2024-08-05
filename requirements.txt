@@ -14,3 +14,4 @@ datetime
 pygwalker
 clickhouse_connect
 haversine
+Nominatim
