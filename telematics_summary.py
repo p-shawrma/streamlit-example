@@ -410,19 +410,34 @@ def main():
             st.dataframe(df_display, height=400)
         
         st.markdown("## Vehicle level Average Slow and Fast Charge SOC")
-
-        df_charging = df_filtered.groupby('reg_no').agg(
+        
+        df_charging_1 = df_filtered[(df_filtered['slow_charge_soc'] >= 0) | df_filtered['fast_charge_soc'] >= 0]
+        
+        df_charging = df_charging_1.groupby(['chassis_number', 'reg_no', 'telematics_number'], dropna=False).agg(
             average_slow_charge_soc=('slow_charge_soc', 'mean'),
             average_fast_charge_soc=('fast_charge_soc', 'mean')
         ).reset_index().round(1)
-
-        df_charging.rename(columns={
-            'reg_no': 'Registration Number',
-            'average_slow_charge_soc': 'Average Slow Charge SOC',
-            'average_fast_charge_soc': 'Average Fast Charge SOC'
-        }, inplace=True)
-
-        st.dataframe(df_charging, height=300)     
+        
+        df_charging['chassis_number'] = replace_invalid_values(df_range['chassis_number'], 'Unknown Chassis', [None, np.nan, False, 0, '0'])
+        df_charging['reg_no'] = replace_invalid_values(df_range['reg_no'], 'Unknown Reg', invalid_reg_no_values)
+        df_charging['telematics_number'] = replace_invalid_values(df_range['telematics_number'], 'Unknown Telematics', invalid_telematics_values)
+        
+        # df_charging.rename(columns={
+        #     'reg_no': 'Registration Number',
+        #     'average_slow_charge_soc': 'Average Slow Charge SOC',
+        #     'average_fast_charge_soc': 'Average Fast Charge SOC'
+        # }, inplace=True)
+        
+        df_display_charging = df_charging[['chassis_number', 'reg_no', 'telematics_number', 'average_slow_charge_soc', 'average_fast_charge_soc']].rename(
+                columns={
+                    'chassis_number': 'Chassis Number',
+                    'reg_no': 'Registration Number', 
+                    'telematics_number': 'Telematics Number',
+                    'average_slow_charge_soc': 'Average Slow Charge SOC',
+                    'average_fast_charge_soc': 'Average Fast Charge SOC'
+                }
+            )
+        st.dataframe(df_display_charging, height=300)     
         
     df_charging_locations = df_filtered_tel[(df_filtered_tel['change_in_soc'] > 0) & (df_filtered_tel['soc_type'] == "Charging")]
 
