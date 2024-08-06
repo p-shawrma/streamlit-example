@@ -119,6 +119,7 @@ def get_mapping_data():
     
     return df_mapping.copy()
 
+
 def replace_invalid_values(series, placeholder, invalid_values):
     return series.replace(invalid_values, placeholder).fillna(placeholder)
 
