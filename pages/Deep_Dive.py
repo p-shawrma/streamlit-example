@@ -9,28 +9,28 @@ from geopy.geocoders import Nominatim
 import psycopg2
 from pygwalker.api.streamlit import StreamlitRenderer
 
-@st.cache_data(ttl=6000)
-def fetch_mapping_table():
-    user = "postgres.gqmpfexjoachyjgzkhdf"
-    password = "Change@2015Log9"
-    host = "aws-0-ap-south-1.pooler.supabase.com"
-    port = "5432"
-    dbname = "postgres"
+# @st.cache_data(ttl=6000)
+# def fetch_mapping_table():
+#     user = "postgres.gqmpfexjoachyjgzkhdf"
+#     password = "Change@2015Log9"
+#     host = "aws-0-ap-south-1.pooler.supabase.com"
+#     port = "5432"
+#     dbname = "postgres"
     
-    with psycopg2.connect(
-        dbname=dbname,
-        user=user,
-        password=password,
-        host=host,
-        port=port
-    ) as conn:
-        cursor = conn.cursor()
-        query = "SELECT * FROM mapping_table"
-        cursor.execute(query)
-        records = cursor.fetchall()
-        columns = [desc[0] for desc in cursor.description]
-        df_mapping = pd.DataFrame(records, columns=columns)
-        return df_mapping
+#     with psycopg2.connect(
+#         dbname=dbname,
+#         user=user,
+#         password=password,
+#         host=host,
+#         port=port
+#     ) as conn:
+#         cursor = conn.cursor()
+#         query = "SELECT * FROM mapping_table"
+#         cursor.execute(query)
+#         records = cursor.fetchall()
+#         columns = [desc[0] for desc in cursor.description]
+#         df_mapping = pd.DataFrame(records, columns=columns)
+#         return df_mapping
 
 ch_host = 'a84a1hn9ig.ap-south-1.aws.clickhouse.cloud'
 ch_user = 'default'
@@ -53,6 +53,14 @@ def fetch_model_numbers_and_dates():
     result = client.query(query)
     df = pd.DataFrame(result.result_rows, columns=result.column_names)
     return df
+
+@st.cache_data(ttl=6000)
+def fetch_mapping_table():
+    client = create_client()
+    query = "SELECT * FROM mapping_table"
+    result = client.query(query)
+    df_mapping = pd.DataFrame(result.result_rows, columns=result.column_names)
+    return df_mapping
 
 @st.cache_data(ttl=6000)
 def fetch_data(model_numbers, start_date, end_date):
