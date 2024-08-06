@@ -105,17 +105,17 @@ def get_data():
     
 @st.cache_data
 def get_mapping_data():
-    conn = psycopg2.connect(
-        database="postgres",
-        user='postgres.gqmpfexjoachyjgzkhdf',
-        password='Change@2015Log9',
-        host='aws-0-ap-south-1.pooler.supabase.com',
-        port='5432'
+    client = clickhouse_connect.get_client(
+        host=ch_host,
+        user=ch_user,
+        password=ch_password,
+        database=ch_database,
+        secure=True
     )
-
-    query_mapping = "SELECT reg_no, chassis_number, telematics_number, location, client_name, battery_type FROM mapping_table;"
-    df_mapping = pd.read_sql_query(query_mapping, conn)
-    conn.close()
+    
+    query_mapping = "SELECT reg_no, chassis_number, telematics_number, location, client_name, battery_type FROM mapping_table"
+    result_mapping = client.query(query_mapping)
+    df_mapping = pd.DataFrame(result_mapping.result_rows, columns=result_mapping.column_names)
     
     return df_mapping.copy()
 
