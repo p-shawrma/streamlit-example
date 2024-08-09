@@ -230,7 +230,7 @@ def main():
         st.markdown("### Cache Management")
         if st.button("Clear Cache"):
             st.cache_data.clear()
-            st.experimental_rerun()
+            # st.experimental_rerun()
 
     # Layout: 3 columns
     col1, col2, col3 = st.columns(3)
