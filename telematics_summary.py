@@ -33,8 +33,8 @@ px.set_mapbox_access_token("pk.eyJ1IjoicC1zaGFybWEiLCJhIjoiY2xzNjRzbTY1MXNodjJsb
 @st.cache_data
 def get_data():
     # Calculate the date 45 days ago from today
-    days_from = (datetime.now() - timedelta(days=30)).strftime('%Y-%m-%d')
-    days_to = (datetime.now() - timedelta(days=30)).strftime('%Y-%m-%d')
+    days_from = (datetime.now() - timedelta(days=15)).strftime('%Y-%m-%d')
+    days_to = (datetime.now() - timedelta(days=15)).strftime('%Y-%m-%d')
 
     # Query for calculated_main_telematics table with date filter
     query_main = f"""
