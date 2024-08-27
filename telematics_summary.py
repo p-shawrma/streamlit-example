@@ -34,7 +34,7 @@ px.set_mapbox_access_token("pk.eyJ1IjoicC1zaGFybWEiLCJhIjoiY2xzNjRzbTY1MXNodjJsb
 def get_data():
     # Calculate the date 45 days ago from today
     days_from = (datetime.now() - timedelta(days=10)).strftime('%Y-%m-%d')
-    days_to = (datetime.now() - timedelta(days=30)).strftime('%Y-%m-%d')
+    days_to = (datetime.now() - timedelta(days=7)).strftime('%Y-%m-%d')
 
     # Query for calculated_main_telematics table with date filter
     query_main = f"""
@@ -124,6 +124,11 @@ def replace_invalid_values(series, placeholder, invalid_values):
     return series.replace(invalid_values, placeholder).fillna(placeholder)
 
 def main():
+
+    tabs = st.tabs(["Fleet Dashboard", "Inventory Status", "Service and Repair Status"])
+
+
+    
     df_main, df_tel, df_cohort = get_data()
     df_mapping = get_mapping_data()
     df = df_main  # Use df for data from calculated_main_telematics table
@@ -231,268 +236,280 @@ def main():
         if st.button("Clear Cache"):
             st.cache_data.clear()
             st.experimental_rerun()
-
-    # Layout: 3 columns
-    col1, col2, col3 = st.columns(3)
-
-    # Column 1 - Average Distance Travelled
-    with col1:
-        st.markdown("## Average Distance")
-
-        if not df_filtered.empty:
-            grouped_distance = df_filtered.groupby('date')['total_km_travelled']
-            avg_dist_all_vehicles_per_day = df_filtered.groupby('date')['total_km_travelled'].mean().round(1).reset_index()
-            overall_avg_dist_per_day = avg_dist_all_vehicles_per_day['total_km_travelled'].mean().round(1)
-            st.metric(" ", f"{overall_avg_dist_per_day:.2f} km")
-
-            boxplot_data = {
-                "xAxis": {
-                    "type": "category",
-                    "data": [],
-                    "axisLabel": {
-                        "rotate": 90,
-                        "fontSize": 10
-                    }
-                },
-                "yAxis": {"type": "value"},
-                "tooltip": {
-                    "trigger": "item",
-                    "axisPointer": {"type": "shadow"}
-                },
-                "series": [{"name": "Distance Travelled", "type": "boxplot", "data": []}]
-            }
-
-            for name, group in grouped_distance:
-                percentiles = group.quantile([0.1, 0.25, 0.5, 0.75, 0.9]).round(1).tolist()
-                boxplot_data["xAxis"]["data"].append(name.strftime('%d-%m-%Y'))
-                boxplot_data["series"][0]["data"].append([
-                    percentiles[0], percentiles[1], percentiles[2], percentiles[3], percentiles[4]
-                ])
-
-            st_echarts(options=boxplot_data, height="400px")
-        else:
-            st.write("Please select a date range and other filters to view analytics.")
-
-        st.markdown("## Charge SOC Over Time")
-        if 'df_filtered' in locals() and not df_filtered.empty:
-            charge_soc_data = df_filtered.groupby('date').agg({
-                'fast_charge_soc': 'mean',
-                'slow_charge_soc': 'mean'
-            }).round(1).reset_index()
-
-            stacked_column_options = {
-                "tooltip": {
-                    "trigger": "axis",
-                    "axisPointer": {
-                        "type": "shadow"
-                    }
-                },
-                "xAxis": {
-                    "type": "category",
-                    "rotate": 90,
-                    "data": charge_soc_data['date'].dt.strftime('%d-%m-%Y').tolist()
-                },
-                "yAxis": {
-                    "type": "value"
-                },
-                "series": [
-                    {
-                        "name": "Fast Charge SOC",
-                        "type": "bar",
-                        "stack": "charging",
-                        "data": charge_soc_data['fast_charge_soc'].tolist()
+    # Fleet Dashboard tab
+    with tabs[0]:
+        
+        # Layout: 3 columns
+        col1, col2, col3 = st.columns(3)
+    
+        # Column 1 - Average Distance Travelled
+        with col1:
+            st.markdown("## Average Distance")
+    
+            if not df_filtered.empty:
+                grouped_distance = df_filtered.groupby('date')['total_km_travelled']
+                avg_dist_all_vehicles_per_day = df_filtered.groupby('date')['total_km_travelled'].mean().round(1).reset_index()
+                overall_avg_dist_per_day = avg_dist_all_vehicles_per_day['total_km_travelled'].mean().round(1)
+                st.metric(" ", f"{overall_avg_dist_per_day:.2f} km")
+    
+                boxplot_data = {
+                    "xAxis": {
+                        "type": "category",
+                        "data": [],
+                        "axisLabel": {
+                            "rotate": 90,
+                            "fontSize": 10
+                        }
                     },
-                    {
-                        "name": "Slow Charge SOC",
-                        "type": "bar",
-                        "stack": "charging",
-                        "data": charge_soc_data['slow_charge_soc'].tolist()
-                    }
-                ]
-            }
-            st_echarts(options=stacked_column_options, height="400px")
-        else:
-            st.write("Please select a date range and other filters to view analytics.") 
-
-    # Column 2 - Average Range of the Fleet
-    with col2:
-        st.markdown("## Average Range")
+                    "yAxis": {"type": "value"},
+                    "tooltip": {
+                        "trigger": "item",
+                        "axisPointer": {"type": "shadow"}
+                    },
+                    "series": [{"name": "Distance Travelled", "type": "boxplot", "data": []}]
+                }
     
-        df_range = df_filtered[(df_filtered['total_km_travelled'] >= 0) & (df_filtered['total_discharge_soc'] < 0)]
-        avg_range_fleet = np.sum(df_range['total_km_travelled']) * -100 / np.sum(df_range['total_discharge_soc'])
-        st.metric(" ", f"{avg_range_fleet:.2f} km")
+                for name, group in grouped_distance:
+                    percentiles = group.quantile([0.1, 0.25, 0.5, 0.75, 0.9]).round(1).tolist()
+                    boxplot_data["xAxis"]["data"].append(name.strftime('%d-%m-%Y'))
+                    boxplot_data["series"][0]["data"].append([
+                        percentiles[0], percentiles[1], percentiles[2], percentiles[3], percentiles[4]
+                    ])
     
-        if not df_range.empty:
-            grouped = df_range.groupby('date')['predicted_range']
-            boxplot_data = {
-                "xAxis": {
-                    "type": "category",
-                    "data": [],
-                    "axisLabel": {
+                st_echarts(options=boxplot_data, height="400px")
+            else:
+                st.write("Please select a date range and other filters to view analytics.")
+    
+            st.markdown("## Charge SOC Over Time")
+            if 'df_filtered' in locals() and not df_filtered.empty:
+                charge_soc_data = df_filtered.groupby('date').agg({
+                    'fast_charge_soc': 'mean',
+                    'slow_charge_soc': 'mean'
+                }).round(1).reset_index()
+    
+                stacked_column_options = {
+                    "tooltip": {
+                        "trigger": "axis",
+                        "axisPointer": {
+                            "type": "shadow"
+                        }
+                    },
+                    "xAxis": {
+                        "type": "category",
                         "rotate": 90,
-                        "fontSize": 10
-                    }
-                },
-                "yAxis": {"type": "value"},
-                "tooltip": {
-                    "trigger": "item",
-                    "axisPointer": {"type": "shadow"}
-                },
-                "series": [{"name": "Predicted Range", "type": "boxplot", "data": []}]
-            }
-
-            for name, group in grouped:
-                percentiles = group.quantile([0.1, 0.25, 0.5, 0.75, 0.9]).round(1).tolist()
-                boxplot_data["xAxis"]["data"].append(name.strftime('%d-%m-%Y'))
-                boxplot_data["series"][0]["data"].append([
-                    percentiles[0], percentiles[1], percentiles[2], percentiles[3], percentiles[4]
-                ])
-
-            st_echarts(options=boxplot_data, height="400px")
-        else:
-            st.write("Please select a date range and other filters to view analytics.")
-
-        st.markdown("## Charging Metrics")
-        if 'df_filtered' in locals() and not df_filtered.empty:
-            avg_slow_charge_sessions = df_filtered['slow_charge_count'].mean()
-            avg_slow_charge_soc = df_filtered['slow_charge_soc'].mean()
-            avg_fast_charge_sessions = df_filtered['fast_charge_count'].mean()
-            avg_fast_charge_soc = df_filtered['fast_charge_soc'].mean()
-            
-            st.metric("Average Slow Charge Sessions in a day", f"{avg_slow_charge_sessions:.2f}")
-            st.metric("Average Slow Charge SOC in a day", f"{avg_slow_charge_soc:.2f}")
-            st.metric("Average Fast Charge Sessions in a day", f"{avg_fast_charge_sessions:.2f}")
-            st.metric("Average Fast Charge SOC in a day", f"{avg_fast_charge_soc:.2f}")
-        else:
-            st.write("Please select a date range and other filters to view analytics.")
+                        "data": charge_soc_data['date'].dt.strftime('%d-%m-%Y').tolist()
+                    },
+                    "yAxis": {
+                        "type": "value"
+                    },
+                    "series": [
+                        {
+                            "name": "Fast Charge SOC",
+                            "type": "bar",
+                            "stack": "charging",
+                            "data": charge_soc_data['fast_charge_soc'].tolist()
+                        },
+                        {
+                            "name": "Slow Charge SOC",
+                            "type": "bar",
+                            "stack": "charging",
+                            "data": charge_soc_data['slow_charge_soc'].tolist()
+                        }
+                    ]
+                }
+                st_echarts(options=stacked_column_options, height="400px")
+            else:
+                st.write("Please select a date range and other filters to view analytics.") 
     
-    with col3:
-        st.markdown("## Distance travelled, Range and Runtime")
+        # Column 2 - Average Range of the Fleet
+        with col2:
+            st.markdown("## Average Range")
+        
+            df_range = df_filtered[(df_filtered['total_km_travelled'] >= 0) & (df_filtered['total_discharge_soc'] < 0)]
+            avg_range_fleet = np.sum(df_range['total_km_travelled']) * -100 / np.sum(df_range['total_discharge_soc'])
+            st.metric(" ", f"{avg_range_fleet:.2f} km")
+        
+            if not df_range.empty:
+                grouped = df_range.groupby('date')['predicted_range']
+                boxplot_data = {
+                    "xAxis": {
+                        "type": "category",
+                        "data": [],
+                        "axisLabel": {
+                            "rotate": 90,
+                            "fontSize": 10
+                        }
+                    },
+                    "yAxis": {"type": "value"},
+                    "tooltip": {
+                        "trigger": "item",
+                        "axisPointer": {"type": "shadow"}
+                    },
+                    "series": [{"name": "Predicted Range", "type": "boxplot", "data": []}]
+                }
+    
+                for name, group in grouped:
+                    percentiles = group.quantile([0.1, 0.25, 0.5, 0.75, 0.9]).round(1).tolist()
+                    boxplot_data["xAxis"]["data"].append(name.strftime('%d-%m-%Y'))
+                    boxplot_data["series"][0]["data"].append([
+                        percentiles[0], percentiles[1], percentiles[2], percentiles[3], percentiles[4]
+                    ])
+    
+                st_echarts(options=boxplot_data, height="400px")
+            else:
+                st.write("Please select a date range and other filters to view analytics.")
+    
+            st.markdown("## Charging Metrics")
+            if 'df_filtered' in locals() and not df_filtered.empty:
+                avg_slow_charge_sessions = df_filtered['slow_charge_count'].mean()
+                avg_slow_charge_soc = df_filtered['slow_charge_soc'].mean()
+                avg_fast_charge_sessions = df_filtered['fast_charge_count'].mean()
+                avg_fast_charge_soc = df_filtered['fast_charge_soc'].mean()
+                
+                st.metric("Average Slow Charge Sessions in a day", f"{avg_slow_charge_sessions:.2f}")
+                st.metric("Average Slow Charge SOC in a day", f"{avg_slow_charge_soc:.2f}")
+                st.metric("Average Fast Charge Sessions in a day", f"{avg_fast_charge_sessions:.2f}")
+                st.metric("Average Fast Charge SOC in a day", f"{avg_fast_charge_soc:.2f}")
+            else:
+                st.write("Please select a date range and other filters to view analytics.")
+        
+        with col3:
+            st.markdown("## Distance travelled, Range and Runtime")
+                
+            df_range = df_filtered[(df_filtered['total_km_travelled'] >= 0)]
+                
+            if not df_range.empty:
+                invalid_reg_no_values = [None, np.nan, "NA", "0", "FALSE", "NULL","false","False"]
+                invalid_telematics_values = [None, np.nan, "111111111111111", "FALSE", "11111111111111", "A","false","False"]
+                
+                df_range['chassis_number'] = replace_invalid_values(df_range['chassis_number'], 'Unknown Chassis', [None, np.nan, False, 0, '0'])
+                df_range['reg_no'] = replace_invalid_values(df_range['reg_no'], 'Unknown Reg', invalid_reg_no_values)
+                df_range['telematics_number'] = replace_invalid_values(df_range['telematics_number'], 'Unknown Telematics', invalid_telematics_values)
+                
+                df_grouped = df_range.groupby(['chassis_number', 'reg_no', 'telematics_number'], dropna=False).agg(
+                    total_km_travelled_sum=('total_km_travelled', 'sum'),
+                    total_discharge_soc_sum=('total_discharge_soc', 'sum'),
+                    total_runtime_minutes_sum=('total_runtime_minutes', 'sum')
+                ).reset_index()
+                
+                df_grouped['Range'] = df_grouped['total_km_travelled_sum'] * (-100) / df_grouped['total_discharge_soc_sum']
+                
+                avg_run_time = df_range['total_runtime_minutes'].median()
+                st.markdown(f"#### Average Run Time: {avg_run_time:.2f} minutes")
+                
+                avg_run_time_per_day = df_range.groupby(['chassis_number', 'reg_no', 'telematics_number'], dropna=False)['total_runtime_minutes'].median().reset_index(name='avg_run_time_per_day')
+                df_grouped = df_grouped.merge(avg_run_time_per_day, on=['chassis_number', 'reg_no', 'telematics_number'])
+                
+                df_grouped['chassis_number'].replace('Unknown Chassis', None, inplace=True)
+                df_grouped['reg_no'].replace('Unknown Reg', None, inplace=True)
+                df_grouped['telematics_number'].replace('Unknown Telematics', None, inplace=True)
+                
+                df_display = df_grouped[['chassis_number', 'reg_no', 'telematics_number', 'total_km_travelled_sum', 'total_runtime_minutes_sum', 'avg_run_time_per_day', 'Range']].rename(
+                    columns={
+                        'chassis_number': 'Chassis Number',
+                        'reg_no': 'Registration Number', 
+                        'telematics_number': 'Telematics Number',
+                        'total_km_travelled_sum': 'Total KM Travelled',
+                        'total_runtime_minutes_sum': 'Total Runtime Minutes',
+                        'avg_run_time_per_day': 'Average Run Time Per Day'
+                    }
+                )
+                
+                st.dataframe(df_display, height=400)
             
-        df_range = df_filtered[(df_filtered['total_km_travelled'] >= 0)]
+            st.markdown("## Vehicle level Average Slow and Fast Charge SOC")
             
-        if not df_range.empty:
-            invalid_reg_no_values = [None, np.nan, "NA", "0", "FALSE", "NULL","false","False"]
-            invalid_telematics_values = [None, np.nan, "111111111111111", "FALSE", "11111111111111", "A","false","False"]
+            df_charging_1 = df_filtered[(df_filtered['slow_charge_soc'] >= 0) | df_filtered['fast_charge_soc'] >= 0]
             
-            df_range['chassis_number'] = replace_invalid_values(df_range['chassis_number'], 'Unknown Chassis', [None, np.nan, False, 0, '0'])
-            df_range['reg_no'] = replace_invalid_values(df_range['reg_no'], 'Unknown Reg', invalid_reg_no_values)
-            df_range['telematics_number'] = replace_invalid_values(df_range['telematics_number'], 'Unknown Telematics', invalid_telematics_values)
+            # Replace invalid values
+            df_charging_1['chassis_number'] = replace_invalid_values(df_charging_1['chassis_number'], 'Unknown Chassis', [None, np.nan, False, 0, '0'])
+            df_charging_1['reg_no'] = replace_invalid_values(df_charging_1['reg_no'], 'Unknown Reg', invalid_reg_no_values)
+            df_charging_1['telematics_number'] = replace_invalid_values(df_charging_1['telematics_number'], 'Unknown Telematics', invalid_telematics_values)
             
-            df_grouped = df_range.groupby(['chassis_number', 'reg_no', 'telematics_number'], dropna=False).agg(
-                total_km_travelled_sum=('total_km_travelled', 'sum'),
-                total_discharge_soc_sum=('total_discharge_soc', 'sum'),
-                total_runtime_minutes_sum=('total_runtime_minutes', 'sum')
+            # Grouping by vehicle details and calculating mean and total SOC values
+            df_charging_grouped = df_charging_1.groupby(['chassis_number', 'reg_no', 'telematics_number'], dropna=False).agg(
+                total_slow_charge_soc=('slow_charge_soc', 'sum'),
+                total_fast_charge_soc=('fast_charge_soc', 'sum'),
+                average_slow_charge_soc=('slow_charge_soc', 'mean'),
+                average_fast_charge_soc=('fast_charge_soc', 'mean')
             ).reset_index()
             
-            df_grouped['Range'] = df_grouped['total_km_travelled_sum'] * (-100) / df_grouped['total_discharge_soc_sum']
+            # Replace placeholders back to None for display
+            df_charging_grouped['chassis_number'].replace('Unknown Chassis', None, inplace=True)
+            df_charging_grouped['reg_no'].replace('Unknown Reg', None, inplace=True)
+            df_charging_grouped['telematics_number'].replace('Unknown Telematics', None, inplace=True)
             
-            avg_run_time = df_range['total_runtime_minutes'].median()
-            st.markdown(f"#### Average Run Time: {avg_run_time:.2f} minutes")
-            
-            avg_run_time_per_day = df_range.groupby(['chassis_number', 'reg_no', 'telematics_number'], dropna=False)['total_runtime_minutes'].median().reset_index(name='avg_run_time_per_day')
-            df_grouped = df_grouped.merge(avg_run_time_per_day, on=['chassis_number', 'reg_no', 'telematics_number'])
-            
-            df_grouped['chassis_number'].replace('Unknown Chassis', None, inplace=True)
-            df_grouped['reg_no'].replace('Unknown Reg', None, inplace=True)
-            df_grouped['telematics_number'].replace('Unknown Telematics', None, inplace=True)
-            
-            df_display = df_grouped[['chassis_number', 'reg_no', 'telematics_number', 'total_km_travelled_sum', 'total_runtime_minutes_sum', 'avg_run_time_per_day', 'Range']].rename(
+            df_display_charging = df_charging_grouped[['chassis_number', 'reg_no', 'telematics_number', 'total_slow_charge_soc', 'total_fast_charge_soc', 'average_slow_charge_soc', 'average_fast_charge_soc']].rename(
                 columns={
                     'chassis_number': 'Chassis Number',
-                    'reg_no': 'Registration Number', 
+                    'reg_no': 'Registration Number',
                     'telematics_number': 'Telematics Number',
-                    'total_km_travelled_sum': 'Total KM Travelled',
-                    'total_runtime_minutes_sum': 'Total Runtime Minutes',
-                    'avg_run_time_per_day': 'Average Run Time Per Day'
+                    'total_slow_charge_soc': 'Total Slow Charge SOC',
+                    'total_fast_charge_soc': 'Total Fast Charge SOC',
+                    'average_slow_charge_soc': 'Average Slow Charge SOC',
+                    'average_fast_charge_soc': 'Average Fast Charge SOC'
                 }
             )
             
-            st.dataframe(df_display, height=400)
-        
-        st.markdown("## Vehicle level Average Slow and Fast Charge SOC")
-        
-        df_charging_1 = df_filtered[(df_filtered['slow_charge_soc'] >= 0) | df_filtered['fast_charge_soc'] >= 0]
-        
-        # Replace invalid values
-        df_charging_1['chassis_number'] = replace_invalid_values(df_charging_1['chassis_number'], 'Unknown Chassis', [None, np.nan, False, 0, '0'])
-        df_charging_1['reg_no'] = replace_invalid_values(df_charging_1['reg_no'], 'Unknown Reg', invalid_reg_no_values)
-        df_charging_1['telematics_number'] = replace_invalid_values(df_charging_1['telematics_number'], 'Unknown Telematics', invalid_telematics_values)
-        
-        # Grouping by vehicle details and calculating mean and total SOC values
-        df_charging_grouped = df_charging_1.groupby(['chassis_number', 'reg_no', 'telematics_number'], dropna=False).agg(
-            total_slow_charge_soc=('slow_charge_soc', 'sum'),
-            total_fast_charge_soc=('fast_charge_soc', 'sum'),
-            average_slow_charge_soc=('slow_charge_soc', 'mean'),
-            average_fast_charge_soc=('fast_charge_soc', 'mean')
-        ).reset_index()
-        
-        # Replace placeholders back to None for display
-        df_charging_grouped['chassis_number'].replace('Unknown Chassis', None, inplace=True)
-        df_charging_grouped['reg_no'].replace('Unknown Reg', None, inplace=True)
-        df_charging_grouped['telematics_number'].replace('Unknown Telematics', None, inplace=True)
-        
-        df_display_charging = df_charging_grouped[['chassis_number', 'reg_no', 'telematics_number', 'total_slow_charge_soc', 'total_fast_charge_soc', 'average_slow_charge_soc', 'average_fast_charge_soc']].rename(
-            columns={
-                'chassis_number': 'Chassis Number',
-                'reg_no': 'Registration Number',
-                'telematics_number': 'Telematics Number',
-                'total_slow_charge_soc': 'Total Slow Charge SOC',
-                'total_fast_charge_soc': 'Total Fast Charge SOC',
-                'average_slow_charge_soc': 'Average Slow Charge SOC',
-                'average_fast_charge_soc': 'Average Fast Charge SOC'
-            }
-        )
-        
-        st.dataframe(df_display_charging, height=300) 
-        
-    df_charging_locations = df_filtered_tel[(df_filtered_tel['change_in_soc'] > 0) & (df_filtered_tel['soc_type'] == "Charging")]
+            st.dataframe(df_display_charging, height=300) 
+            
+        df_charging_locations = df_filtered_tel[(df_filtered_tel['change_in_soc'] > 0) & (df_filtered_tel['soc_type'] == "Charging")]
+    
+        if not df_filtered_cohort.empty:                
+            st.markdown("## Distance Travelled distribution ")
+            pivot_table = df_filtered_cohort.pivot_table(
+                index='distance_bucket',
+                columns='date',
+                values='vehicle_number',
+                aggfunc='count',
+                fill_value=0
+            )
+            pivot_table.columns = pivot_table.columns.strftime('%d-%m-%Y')
+            
+            pivot_table_percentage = pivot_table.div(pivot_table.sum(axis=0), axis='columns') * 100
+            formatted_pivot_table_percentage = pivot_table_percentage.style.format("{:.1f}%")
+            st.table(formatted_pivot_table_percentage)
+    
+        else:
+            st.write("Please select a date range and other filters to view analytics.")
+            
+        if not df_filtered.empty:
+            st.markdown("## Day Wise Data")
+            st.dataframe(df_filtered, height=300)
+        else:
+            st.write("df_filtered is empty")
+            
+        if not df_filtered_tel.empty:
+            st.markdown("## SOC Data")
+            st.dataframe(df_filtered_tel, height=300)
+        else:
+            st.write("df_filtered_tel is empty")
+    
+        invalid_reg_no_values = [None, np.nan, "NA", "0", "FALSE", "NULL"]
+        invalid_telematics_values = [None, np.nan, "111111111111111", "FALSE", "11111111111111", "A"]
+    
+        df_filtered_mapping['chassis_number'] = replace_invalid_values(df_filtered_mapping['chassis_number'], 'Unknown Chassis', [None, np.nan, False, 0, '0'])
+        df_filtered_mapping['reg_no'] = replace_invalid_values(df_filtered_mapping['reg_no'], 'Unknown Reg', invalid_reg_no_values)
+        df_filtered_mapping['telematics_number'] = replace_invalid_values(df_filtered_mapping['telematics_number'], 'Unknown Telematics', invalid_telematics_values)
+    
+        df_filtered_mapping.reset_index(drop=True, inplace=True)
+        df_filtered_mapping['Row Number'] = df_filtered_mapping.index + 1
+    
+        if not df_filtered_mapping.empty:
+            st.markdown("## List of Assets")
+            st.dataframe(df_filtered_mapping[['Row Number', 'chassis_number', 'reg_no', 'telematics_number', 'location', 'client_name', 'battery_type']], height=300)
+        else:
+            st.write("No assets found for the selected filters.")
 
-    if not df_filtered_cohort.empty:                
-        st.markdown("## Distance Travelled distribution ")
-        pivot_table = df_filtered_cohort.pivot_table(
-            index='distance_bucket',
-            columns='date',
-            values='vehicle_number',
-            aggfunc='count',
-            fill_value=0
-        )
-        pivot_table.columns = pivot_table.columns.strftime('%d-%m-%Y')
-        
-        pivot_table_percentage = pivot_table.div(pivot_table.sum(axis=0), axis='columns') * 100
-        formatted_pivot_table_percentage = pivot_table_percentage.style.format("{:.1f}%")
-        st.table(formatted_pivot_table_percentage)
+    # Inventory Status tab
+    with tabs[1]:
+        st.markdown("## Inventory Status")
+        st.write("This section is under construction.")
 
-    else:
-        st.write("Please select a date range and other filters to view analytics.")
-        
-    if not df_filtered.empty:
-        st.markdown("## Day Wise Data")
-        st.dataframe(df_filtered, height=300)
-    else:
-        st.write("df_filtered is empty")
-        
-    if not df_filtered_tel.empty:
-        st.markdown("## SOC Data")
-        st.dataframe(df_filtered_tel, height=300)
-    else:
-        st.write("df_filtered_tel is empty")
-
-    invalid_reg_no_values = [None, np.nan, "NA", "0", "FALSE", "NULL"]
-    invalid_telematics_values = [None, np.nan, "111111111111111", "FALSE", "11111111111111", "A"]
-
-    df_filtered_mapping['chassis_number'] = replace_invalid_values(df_filtered_mapping['chassis_number'], 'Unknown Chassis', [None, np.nan, False, 0, '0'])
-    df_filtered_mapping['reg_no'] = replace_invalid_values(df_filtered_mapping['reg_no'], 'Unknown Reg', invalid_reg_no_values)
-    df_filtered_mapping['telematics_number'] = replace_invalid_values(df_filtered_mapping['telematics_number'], 'Unknown Telematics', invalid_telematics_values)
-
-    df_filtered_mapping.reset_index(drop=True, inplace=True)
-    df_filtered_mapping['Row Number'] = df_filtered_mapping.index + 1
-
-    if not df_filtered_mapping.empty:
-        st.markdown("## List of Assets")
-        st.dataframe(df_filtered_mapping[['Row Number', 'chassis_number', 'reg_no', 'telematics_number', 'location', 'client_name', 'battery_type']], height=300)
-    else:
-        st.write("No assets found for the selected filters.")
+    # Service and Repair Status tab
+    with tabs[2]:
+        st.markdown("## Service and Repair Status")
+        st.write("This section is under construction.")
 
 if __name__ == "__main__":
     main()
