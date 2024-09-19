@@ -597,12 +597,28 @@ def main():
 
     with st.sidebar:
         st.title("Filter Settings")
+        # model_numbers_and_dates = fetch_model_numbers_and_dates()
+        # model_numbers = model_numbers_and_dates['model_number'].unique().tolist()
+        # selected_model_numbers = st.multiselect('Select Model Numbers', model_numbers)
+    
+        # date_range = model_numbers_and_dates['DeviceDate'].unique()
+        # start_date = st.date_input("Start Date", min(date_range), min_value=min(date_range), max_value=max(date_range))
+        # end_date = st.date_input("End Date", max(date_range), min_value=min(date_range), max_value=max(date_range))
+    
+        # # Convert start and end dates to datetime with proper times
+        # start_date = datetime.combine(start_date, datetime.min.time())
+        # end_date = datetime.combine(end_date, datetime.max.time())
+
+        # fetch_button = st.button("Fetch Data")
+
         model_numbers_and_dates = fetch_model_numbers_and_dates()
         model_numbers = model_numbers_and_dates['model_number'].unique().tolist()
         selected_model_numbers = st.multiselect('Select Model Numbers', model_numbers)
     
         date_range = model_numbers_and_dates['DeviceDate'].unique()
-        start_date = st.date_input("Start Date", min(date_range), min_value=min(date_range), max_value=max(date_range))
+        start_date_default = max(date_range) - timedelta(days=10)  # Default to last 10 days from End Date
+        
+        start_date = st.date_input("Start Date", start_date_default, min_value=min(date_range), max_value=max(date_range))
         end_date = st.date_input("End Date", max(date_range), min_value=min(date_range), max_value=max(date_range))
     
         # Convert start and end dates to datetime with proper times
