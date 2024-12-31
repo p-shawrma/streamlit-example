@@ -7,6 +7,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 from datetime import datetime, timedelta
 import clickhouse_connect
+from pygwalker.api.streamlit import StreamlitRenderer
 
 # ClickHouse connection details
 ch_host = 'a84a1hn9ig.ap-south-1.aws.clickhouse.cloud'
@@ -33,7 +34,7 @@ px.set_mapbox_access_token("pk.eyJ1IjoicC1zaGFybWEiLCJhIjoiY2xzNjRzbTY1MXNodjJsb
 @st.cache_data
 def get_data():
     # Calculate the date 45 days ago from today
-    days_from = (datetime.now() - timedelta(days=10)).strftime('%Y-%m-%d')
+    days_from = (datetime.now() - timedelta(days=45)).strftime('%Y-%m-%d')
     days_to = (datetime.now() - timedelta(days=7)).strftime('%Y-%m-%d')
 
     # Query for calculated_main_telematics table with date filter
@@ -123,6 +124,9 @@ def get_mapping_data():
 def replace_invalid_values(series, placeholder, invalid_values):
     return series.replace(invalid_values, placeholder).fillna(placeholder)
 
+invalid_reg_no_values = [None, np.nan, "NA", "0", "FALSE", "NULL", "false", "False"]
+invalid_telematics_values = [None, np.nan, "111111111111111", "FALSE", "11111111111111", "A", "false", "False"]
+
 def main():
 
     tabs = st.tabs(["Fleet Dashboard", "Inventory Status", "Service and Repair Status"])
@@ -153,7 +157,7 @@ def main():
             min_value=min_date,  # The earliest date a user can select
             max_value=max_date   # The latest date a user can select
         )
-        
+            
         df_filtered = df_main
         df_filtered_tel = df_tel
         df_filtered_cohort = df_cohort
@@ -476,6 +480,11 @@ def main():
         if not df_filtered.empty:
             st.markdown("## Day Wise Data")
             st.dataframe(df_filtered, height=300)
+            # # PyG Walker for data exploration
+            vis_spec = r"""{"config":[{"config":{"defaultAggregated":true,"geoms":["table"],"coordSystem":"generic","limit":-1,"timezoneDisplayOffset":0},"encodings":{"dimensions":[{"fid":"primary_id","name":"primary_id","basename":"primary_id","semanticType":"nominal","analyticType":"dimension","offset":0},{"fid":"vehicle_number","name":"vehicle_number","basename":"vehicle_number","semanticType":"nominal","analyticType":"dimension","offset":0},{"fid":"date","name":"date","basename":"date","semanticType":"temporal","analyticType":"dimension","offset":0},{"fid":"fast_charge_count","name":"fast_charge_count","basename":"fast_charge_count","semanticType":"quantitative","analyticType":"dimension","offset":0},{"fid":"partner_id","name":"partner_id","basename":"partner_id","semanticType":"nominal","analyticType":"dimension","offset":0},{"fid":"product","name":"product","basename":"product","semanticType":"nominal","analyticType":"dimension","offset":0},{"fid":"deployed_city","name":"deployed_city","basename":"deployed_city","semanticType":"nominal","analyticType":"dimension","offset":0},{"fid":"reg_no","name":"reg_no","basename":"reg_no","semanticType":"nominal","analyticType":"dimension","offset":0},{"fid":"telematics_number","name":"telematics_number","basename":"telematics_number","semanticType":"nominal","analyticType":"dimension","offset":0},{"fid":"chassis_number","name":"chassis_number","basename":"chassis_number","semanticType":"nominal","analyticType":"dimension","offset":0},{"fid":"gw_4xHo","name":"binCount10(Range)","semanticType":"ordinal","analyticType":"dimension","computed":true,"expression":{"op":"binCount","as":"gw_4xHo","params":[{"type":"field","value":"gw_7dXb"}],"num":10}},{"fid":"gw_QByc","name":"bin10(Range)","semanticType":"ordinal","analyticType":"dimension","computed":true,"expression":{"op":"bin","as":"gw_QByc","params":[{"type":"field","value":"gw_7dXb"}],"num":10}},{"fid":"gw_mea_key_fid","name":"Measure names","analyticType":"dimension","semanticType":"nominal"}],"measures":[{"fid":"total_discharge_soc","name":"total_discharge_soc","basename":"total_discharge_soc","analyticType":"measure","semanticType":"quantitative","aggName":"sum","offset":0},{"fid":"total_charge_soc","name":"total_charge_soc","basename":"total_charge_soc","analyticType":"measure","semanticType":"quantitative","aggName":"sum","offset":0},{"fid":"total_km_travelled","name":"total_km_travelled","basename":"total_km_travelled","analyticType":"measure","semanticType":"quantitative","aggName":"sum","offset":0},{"fid":"slow_charge_count","name":"slow_charge_count","basename":"slow_charge_count","analyticType":"measure","semanticType":"quantitative","aggName":"sum","offset":0},{"fid":"slow_charge_soc","name":"slow_charge_soc","basename":"slow_charge_soc","analyticType":"measure","semanticType":"quantitative","aggName":"sum","offset":0},{"fid":"fast_charge_soc","name":"fast_charge_soc","basename":"fast_charge_soc","analyticType":"measure","semanticType":"quantitative","aggName":"sum","offset":0},{"fid":"predicted_range","name":"predicted_range","basename":"predicted_range","analyticType":"measure","semanticType":"quantitative","aggName":"sum","offset":0},{"fid":"total_runtime_minutes","name":"total_runtime_minutes","basename":"total_runtime_minutes","analyticType":"measure","semanticType":"quantitative","aggName":"sum","offset":0},{"fid":"total_halttime_minutes","name":"total_halttime_minutes","basename":"total_halttime_minutes","analyticType":"measure","semanticType":"quantitative","aggName":"sum","offset":0},{"fid":"eod_soc","name":"eod_soc","basename":"eod_soc","analyticType":"measure","semanticType":"quantitative","aggName":"sum","offset":0},{"analyticType":"measure","fid":"gw_7dXb","name":"Range","semanticType":"quantitative","computed":true,"aggName":"expr","expression":{"op":"expr","as":"gw_7dXb","params":[{"type":"sql","value":"SUM(total_km_travelled)/SUM(total_discharge_soc)*-1*100"}]}},{"fid":"gw_count_fid","name":"Row count","analyticType":"measure","semanticType":"quantitative","aggName":"sum","computed":true,"expression":{"op":"one","params":[],"as":"gw_count_fid"}},{"fid":"gw_mea_val_fid","name":"Measure values","analyticType":"measure","semanticType":"quantitative","aggName":"sum"}],"rows":[{"fid":"partner_id","name":"partner_id","basename":"partner_id","semanticType":"nominal","analyticType":"dimension","offset":0},{"fid":"product","name":"product","basename":"product","semanticType":"nominal","analyticType":"dimension","offset":0},{"fid":"reg_no","name":"reg_no","basename":"reg_no","semanticType":"nominal","analyticType":"dimension","offset":0}],"columns":[{"fid":"total_discharge_soc","name":"total_discharge_soc","basename":"total_discharge_soc","analyticType":"measure","semanticType":"quantitative","aggName":"sum","offset":0},{"fid":"total_km_travelled","name":"total_km_travelled","basename":"total_km_travelled","analyticType":"measure","semanticType":"quantitative","aggName":"sum","offset":0},{"analyticType":"measure","fid":"gw_7dXb","name":"Range","semanticType":"quantitative","computed":true,"aggName":"expr","expression":{"op":"expr","as":"gw_7dXb","params":[{"type":"sql","value":"SUM(total_km_travelled)/SUM(total_discharge_soc)*-1*100"}]}}],"color":[],"opacity":[],"size":[],"shape":[],"radius":[],"theta":[],"longitude":[],"latitude":[],"geoId":[],"details":[],"filters":[],"text":[]},"layout":{"showActions":false,"showTableSummary":false,"stack":"stack","interactiveScale":false,"zeroScale":true,"size":{"mode":"auto","width":320,"height":200},"format":{},"geoKey":"name","resolve":{"x":false,"y":false,"color":false,"opacity":false,"shape":false,"size":false}},"visId":"gw_tE2R","name":"Range Data"}],"chart_map":{},"workflow_list":[{"workflow":[{"type":"view","query":[{"op":"aggregate","groupBy":["partner_id","product","reg_no"],"measures":[{"field":"total_discharge_soc","agg":"sum","asFieldKey":"total_discharge_soc_sum"},{"field":"total_km_travelled","agg":"sum","asFieldKey":"total_km_travelled_sum"},{"field":"((((sum (total_km_travelled) ) / (sum (total_discharge_soc) )) * (-1)) * (100))","agg":"expr","asFieldKey":"gw_7dXb"}]}]}]}],"version":"0.4.8.9"}"""
+
+            pyg_app = StreamlitRenderer(df_filtered,spec = vis_spec)
+            pyg_app.explorer()
         else:
             st.write("df_filtered is empty")
             
@@ -485,8 +494,8 @@ def main():
         else:
             st.write("df_filtered_tel is empty")
     
-        invalid_reg_no_values = [None, np.nan, "NA", "0", "FALSE", "NULL"]
-        invalid_telematics_values = [None, np.nan, "111111111111111", "FALSE", "11111111111111", "A"]
+        invalid_reg_no_values = [None, np.nan, "nan", "NA", "0", "FALSE", "NULL"]
+        invalid_telematics_values = [None, np.nan,"nan", "111111111111111", "FALSE", "11111111111111", "A"]
     
         df_filtered_mapping['chassis_number'] = replace_invalid_values(df_filtered_mapping['chassis_number'], 'Unknown Chassis', [None, np.nan, False, 0, '0'])
         df_filtered_mapping['reg_no'] = replace_invalid_values(df_filtered_mapping['reg_no'], 'Unknown Reg', invalid_reg_no_values)
